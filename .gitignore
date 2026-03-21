@@ -1,0 +1,91 @@
+# --- Environment & Security ---
+.env
+.env.*
+.env.backup
+.venv/
+env/
+venv/
+ENV/
+
+# --- OS & IDE ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.sw?
+.gemini/
+
+# --- Tools & Brain ---
+.agents/
+.agent/
+_agents/
+_agent/
+brain/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# mypy
+.mypy_cache/
+.dmypy.json
+
+# Logs
+*.log
+
+# Shared-specific ignores
+# (add any shared-specific ignores below)
+.shared/__pycache__/
+
+# Service-specific ignores
+# (add any service-specific ignores below)
+.services/__pycache__/
