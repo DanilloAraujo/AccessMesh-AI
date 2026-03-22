@@ -1,309 +1,344 @@
 # Implementation Status
 
+This document reflects the current codebase state as of 2026-03-22.
+It is intended to describe what is implemented now, what degrades gracefully, and what still requires
+hardening or expansion.
+
 ## Summary
 
-This document lists what is already implemented in the current AccessMesh-AI repository snapshot and what is still pending.
+The project already implements the core product loop:
 
-## Implemented
+- authenticated users can register, log in, and store accessibility preferences
+- users can create or join meeting rooms
+- the frontend supports text, voice, and sign-language oriented interaction modes
+- multimodal inputs converge in a unified backend pipeline
+- an agent mesh enriches the message with accessibility features
+- messages are delivered in real time to room participants
+- session history can be reloaded
+- summaries can be generated from recorded messages
 
-### Shared configuration
+## Implemented Components
 
-Status: implemented
-
-Files:
-
-- `shared/config.py`
-
-What exists:
-
-- Pydantic-based settings model.
-- `.env` loading.
-- Environment-variable support.
-- Azure Key Vault custom settings source.
-- Secret mapping between config fields and Key Vault secret names.
-- Default values for runtime and Azure integrations.
-
-### Shared message schema
+### 1. Authentication And Profile Preferences
 
 Status: implemented
 
-Files:
-
-- `shared/message_schema.py`
-
 What exists:
 
-- Enumerations for message types, accessibility features, languages, and communication modes.
-- Base message envelope with metadata and timestamps.
-- Specialized message models for audio, transcription, gesture, accessibility, translation, avatar readiness, summaries, system events, and errors.
-- Message deserialization helper.
+- registration with email/password
+- login with email/password
+- refresh token endpoint
+- bearer token validation
+- update of communication mode and accessibility preferences
+- persistence of user profile in Cosmos DB when configured
 
-### Azure Key Vault integration
+Primary files:
 
-Status: implemented
-
-Files:
-
-- `services/keyvault_service.py`
-- `shared/config.py`
-
-What exists:
-
-- Secret retrieval.
-- Secret writing.
-- Cached service factory.
-- Automatic use from shared settings when `AZURE_KEYVAULT_URL` is configured.
-
-### Azure Web PubSub integration
-
-Status: implemented
-
-Files:
-
-- `services/webpubsub_service.py`
-
-What exists:
-
-- Connection bootstrap from connection string.
-- Client token generation.
-- Send to all.
-- Send to group.
-- Send to user.
-- Add user to group.
-- Remove user from group.
-- Simple health check.
-
-### Azure Speech integration
-
-Status: implemented
-
-Files:
-
-- `services/speech_service.py`
-
-What exists:
-
-- Client token issuance.
-- Server-side transcription from audio bytes.
-- Language configuration.
-
-### Gesture recognition
-
-Status: implemented
-
-Files:
-
-- `services/gesture_service.py`
-
-What exists:
-
-- Label-to-text mapping.
-- Rule-based recognition from hand landmarks.
-- Frame-based recognition through Azure OpenAI.
+- `backend/app/routes/auth_routes.py`
+- `backend/app/auth.py`
+- `frontend/src/context/AuthContext.tsx`
+- `frontend/src/services/authService.ts`
 
 Notes:
 
-- The rule-based recognizer supports a limited set of gesture heuristics.
-- The Azure OpenAI path depends on endpoint, key, deployment name, and API version.
+- the frontend restores the session from local storage
+- protected routes are enforced in the frontend
+- backend auth requires Cosmos DB for normal credential validation
 
-### Azure Translator integration
+### 2. Room-Based Meetings And Realtime Messaging
 
 Status: implemented
-
-Files:
-
-- `services/translator_service.py`
 
 What exists:
 
-- Translation to a target language.
-- Optional source-language support.
-- Early return when translation is unnecessary.
+- room creation and join by room id
+- Web PubSub token issuance
+- WebSocket connection lifecycle in the frontend
+- room-scoped realtime distribution
+- history reload for late joiners
 
-### Azure OpenAI summarization
+Primary files:
+
+- `backend/app/routes/pubsub_routes.py`
+- `backend/app/core/hub_manager.py`
+- `backend/app/core/realtime_dispatcher.py`
+- `services/webpubsub_service.py`
+- `frontend/src/services/websocketService.ts`
+- `frontend/src/hooks/useWebSocket.ts`
+
+Notes:
+
+- the sender gets an immediate enriched response through REST
+- room members receive broadcasts through Web PubSub
+
+### 3. Multimodal Input
 
 Status: implemented
 
-Files:
+#### Text
 
-- `services/summarization_service.py`
+Status: implemented
+
+- frontend sends typed input to `/chat/send`
+- backend routes it through the same agent mesh used by other modalities
+
+Primary files:
+
+- `frontend/src/pages/MeetingRoom.tsx`
+- `backend/app/routes/chat_routes.py`
+
+#### Speech
+
+Status: implemented with dual-path capture
+
+- browser native `SpeechRecognition` path sends text to `/speech/voice`
+- `MediaRecorder` fallback uploads audio to `/speech/recognize`
+- backend can also issue Azure Speech tokens and transcribe uploaded audio
+
+Primary files:
+
+- `frontend/src/hooks/useSpeechRecognition.ts`
+- `frontend/src/services/speechService.ts`
+- `backend/app/routes/speech_routes.py`
+- `services/speech_service.py`
+
+Notes:
+
+- the frontend intentionally avoids direct Azure Speech SDK coupling
+- the backend centralizes the transcription and pipeline processing logic
+
+#### Gesture
+
+Status: implemented with local-first detection
+
+- camera capture in the frontend
+- local MediaPipe hand landmark detection
+- local heuristic gesture classification
+- AI fallback by sending landmarks or frames
+- backend processing through the unified hub path
+
+Primary files:
+
+- `frontend/src/components/GestureCamera.tsx`
+- `frontend/src/hooks/useHandLandmarker.ts`
+- `frontend/src/services/gestureService.ts`
+- `frontend/src/utils/gestureClassifier.ts`
+- `backend/app/routes/gesture_routes.py`
+- `backend/app/routes/hub_routes.py`
+- `services/gesture_service.py`
+
+## Agent Mesh
+
+Status: implemented
 
 What exists:
 
-- Async summary generation.
-- Sync summary generation.
-- Structured response with `summary` and `key_points`.
+- async publish/subscribe bus
+- correlation-based fan-out and fan-in
+- passive transcript accumulation for summaries
+- optional Service Bus forwarding of selected events
 
-### Azure Neural TTS and visemes
+Agents currently wired:
+
+- `RouterAgent`
+- `AccessibilityAgent`
+- `TranslationAgent`
+- `AvatarAgent`
+- `GestureAgent`
+- `SummaryAgent`
+- `SpeechAgent`
+
+Primary files:
+
+- `agents/agent_bus.py`
+- `agents/pipeline.py`
+- `agents/router_agent.py`
+- `agents/accessibility_agent.py`
+- `agents/translation_agent.py`
+- `agents/avatar_agent.py`
+- `agents/summary_agent.py`
+
+Notes:
+
+- the active runtime pipeline for user-visible chat/speech/gesture enrichment is centered on
+  `RouterAgent`, `AccessibilityAgent`, `TranslationAgent`, and `AvatarAgent`
+- `SummaryAgent` accumulates final utterances and generates summaries on demand
+
+## Accessibility Enrichment
 
 Status: implemented
 
-Files:
+Current enrichments produced by the backend pipeline:
 
-- `services/avatar_service.py`
+- subtitles
+- ARIA-friendly metadata
+- text-to-speech audio
+- sign-language adaptation
+- gloss sequence generation
+- optional language translation
+
+Primary files:
+
+- `agents/accessibility_agent.py`
+- `agents/translation_agent.py`
+- `agents/avatar_agent.py`
+- `shared/message_schema.py`
+
+Notes:
+
+- the final frontend UX currently exposes transcript and avatar-oriented sign output
+- additional user preference toggles exist in the profile model and auth API, but not every preference
+  is fully surfaced as a distinct frontend control yet
+
+## MCP Tooling
+
+Status: implemented
 
 What exists:
 
-- Text-to-speech synthesis.
-- Voice selection by language.
-- Base64 MP3 output.
-- Viseme timing extraction.
+- in-process MCP executor
+- optional remote MCP HTTP mode
+- tool discovery and tool call endpoints
+- tool registry with default tool set
 
-### Azure Cosmos DB persistence
+Registered tools:
 
-Status: implemented
+- `speech_to_text_tool`
+- `gesture_recognition_tool`
+- `text_to_sign_tool`
+- `text_to_speech_tool`
+- `meeting_summary_tool`
+- `llm_classify_tool`
+- `text_translation_tool`
 
-Files:
+Primary files:
+
+- `mcp/mcp_server.py`
+- `mcp/mcp_client.py`
+- `mcp/tool_registry.py`
+- `mcp/tool_executor.py`
+- `mcp/tools/`
+
+## Persistence
+
+Status: implemented with graceful fallback
+
+What exists:
+
+- Cosmos DB containers for users, sessions, and messages
+- in-memory fallback when Cosmos is unavailable for message history
+- user/session persistence only when Cosmos is configured
+
+Primary file:
 
 - `services/cosmos_service.py`
 
-What exists:
+Operational behavior:
 
-- Async Cosmos client initialization.
-- Automatic creation of database and containers.
-- Session upsert and retrieval.
-- Active session listing.
-- Message append and retrieval.
-- User upsert and retrieval.
-- User lookup by email.
+- with Cosmos configured, data survives restarts
+- without Cosmos, meeting history becomes ephemeral and auth flows that require stored users are limited
 
-### Azure Service Bus transport
+## Observability And Platform Integrations
 
-Status: implemented
+Status: partially implemented
 
-Files:
+Implemented:
 
-- `services/servicebus_service.py`
+- Application Insights bootstrap
+- Content Safety service integration
+- Translator service integration
+- Service Bus service integration
+- Key Vault-backed configuration source
 
-What exists:
-
-- Topic message publishing.
-- Receiver creation for topic subscriptions.
-- Graceful client close.
-
-### Azure Content Safety moderation
-
-Status: implemented
-
-Files:
-
-- `services/content_safety_service.py`
-
-What exists:
-
-- Text analysis.
-- Threshold-based moderation result.
-- Structured moderation output.
-
-### Telemetry and observability
-
-Status: implemented
-
-Files:
+Primary files:
 
 - `services/telemetry_service.py`
+- `services/content_safety_service.py`
+- `services/translator_service.py`
+- `services/servicebus_service.py`
+- `shared/config.py`
 
-What exists:
+Notes:
 
-- Azure Monitor configuration.
-- Span tracking for agent operations.
-- Custom event tracking.
+- these services are optional at startup
+- when credentials are absent, the app usually logs the disabled state and continues
 
-## Partially Implemented
+## Frontend UX Status
 
-### Avatar sign-language synthesis
+Status: implemented, functional, but still product-hardening phase
 
-Status: placeholder only
+Available UX features:
 
-Files:
+- login and register pages
+- home lobby with communication mode and language selection
+- meeting room tailored for text, voice, and sign language
+- consent modal for camera/microphone
+- live transcript panel
+- sign avatar area
+- meeting summary modal
 
-- `services/avatar_service.py`
+Primary files:
 
-Current state:
+- `frontend/src/pages/LoginPage.tsx`
+- `frontend/src/pages/RegisterPage.tsx`
+- `frontend/src/pages/Home.tsx`
+- `frontend/src/pages/MeetingRoom.tsx`
+- `frontend/src/components/TranscriptPanel.tsx`
+- `frontend/src/components/AvatarSignView.tsx`
+- `frontend/src/components/SummaryModal.tsx`
 
-- The `synthesise_sign` method is declared but intentionally raises `NotImplementedError`.
-- The repository currently supports TTS and visemes, not generated sign-language animation.
+## Known Gaps And Risks
 
-### End-to-end pipeline orchestration
+### Documentation
 
-Status: implied by design, not implemented here
+Status: previously incomplete, now partially corrected
 
-Current state:
+- top-level documentation had been minimal
+- the `docs/` folder had no actual implementation summary before this update
 
-- The message schema clearly models a multi-stage processing pipeline.
-- The services are ready to be orchestrated.
-- No coordinator, worker runtime, or agent bus implementation is present in the current workspace snapshot.
+### Test Coverage
 
-## Not Yet Implemented in This Workspace
+Status: limited
 
-### Backend runtime
+Observed tests:
 
-Status: not implemented in current snapshot
+- `frontend/src/components/__tests__/ErrorBoundary.test.tsx`
+- `frontend/src/hooks/__tests__/useTranslation.test.ts`
 
-Folders:
+Risk:
 
-- `backend/`
+- core agent flows, auth flows, API routes, and realtime behavior do not appear to have broad automated coverage
 
-Current state:
+### Production Readiness Dependencies
 
-- Present as a folder placeholder.
-- No FastAPI app, routers, controllers, or dependency injection runtime found.
+Status: conditional
 
-### Frontend runtime
+The platform depends on correct Azure configuration for full production behavior:
 
-Status: not implemented in current snapshot
+- Web PubSub for realtime
+- Cosmos DB for persistent auth and history
+- Speech for transcription/token flows
+- Translator for dedicated translation
+- Content Safety for moderation
+- App Insights for telemetry
 
-Folders:
+Without those services:
 
-- `frontend/`
+- local development remains possible
+- some flows become stubbed, degraded, or non-persistent
 
-Current state:
+### UI Exposure Of Preferences
 
-- Present as a folder placeholder.
-- No application files found.
+Status: partial
 
-### Infrastructure-as-code
+- the backend profile model already supports settings such as subtitles, sign language, audio description,
+  high contrast, large text, and translation flags
+- not all of these are clearly surfaced in the current meeting UI as first-class controls
 
-Status: not implemented in current snapshot
+## Recommended Next Documentation Targets
 
-Folders:
-
-- `infrastructure/`
-
-Current state:
-
-- Present as a folder placeholder.
-- No Bicep, Terraform, ARM, or deployment files found.
-
-### Tests
-
-Status: not implemented in current snapshot
-
-Current state:
-
-- No automated tests were found in the workspace.
-
-## Operational Notes
-
-### Dependency readiness
-
-The project already declares the required libraries in `requirements.txt` for:
-
-- FastAPI runtime support.
-- Azure SDK integrations.
-- Validation and settings.
-- Authentication.
-- Multipart uploads.
-- HTTP requests.
-
-### Configuration readiness
-
-The settings model already supports a realistic production shape, including:
-
-- Local development via `.env`.
-- Cloud secret resolution through Azure Key Vault.
-- Security-related configuration such as JWT and app secret.
-
-## Conclusion
-
-The repository already contains a strong service foundation and a clear message contract for an accessibility platform built on Azure. The code that exists is meaningful and reusable. The main gap is not service capability, but application assembly: the API, orchestration, frontend, infrastructure, and tests still need to be added around the implemented core.
+- deployment guide with required Azure resources
+- `.env.example` with safe placeholder values
+- API reference examples for auth, chat, speech, hub, and MCP endpoints
+- architecture diagram covering frontend, backend, agent mesh, MCP tools, and Azure services
+- test strategy document describing local, integration, and cloud validation paths

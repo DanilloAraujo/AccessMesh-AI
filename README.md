@@ -1,190 +1,320 @@
 # AccessMesh-AI
 
-AccessMesh-AI is the service core of an accessibility-focused real-time communication platform built around Azure services. The current repository snapshot already contains the shared configuration layer, the message contract used by the pipeline, and a set of service wrappers for speech, translation, gesture recognition, summarization, telemetry, persistence, and real-time delivery.
+AccessMesh-AI is a real-time accessible communication platform built around a multimodal pipeline:
+text, speech, and gestures all converge into the same backend hub, are processed by an agent mesh,
+and are redistributed with accessibility enrichments such as subtitles, sign-language gloss output,
+translation, and text-to-speech audio.
 
-At this stage, the repository is centered on backend service integration. The folders `backend/`, `frontend/`, `docs/`, and `infrastructure/` exist, but the implementation currently present in the workspace is concentrated in `services/` and `shared/`.
+## What The Solution Does
 
-## Current Status
+- Authenticates users with JWT and stores profile/preferences.
+- Lets each participant choose a preferred communication mode: `text`, `voice`, or `sign_language`.
+- Creates shared meeting rooms identified by a room id.
+- Accepts multimodal input from the browser:
+  - typed text
+  - speech captured from microphone
+  - hand gestures detected from camera
+- Routes every input through the same AI pipeline.
+- Broadcasts enriched output in real time to the meeting room.
+- Persists users, sessions, and message history in Cosmos DB when configured.
+- Generates meeting summaries on demand.
 
-Implemented in this repository:
+## Current Architecture
 
-- Centralized application settings with `.env` support and Azure Key Vault integration.
-- Message schemas for the accessibility pipeline.
-- Azure Web PubSub integration for real-time delivery.
-- Azure Speech token issuance and server-side audio transcription.
-- Azure Translator text translation.
-- Gesture recognition from labels, landmarks, and image frames.
-- Azure OpenAI-based transcript summarization.
-- Azure Cosmos DB persistence for sessions, messages, and users.
-- Azure Service Bus transport wrapper for asynchronous messaging.
-- Azure Content Safety text moderation.
-- Azure Application Insights telemetry integration.
-- Azure Neural TTS audio synthesis with viseme generation for avatar lip-sync.
+### Frontend
 
-Partially implemented or intentionally left as future work:
+The frontend is a React + Vite application located in `frontend/`.
 
-- Backend API layer and route handlers.
-- Frontend application.
-- Infrastructure-as-code definitions.
-- 3D sign-language avatar synthesis.
-- Full orchestration layer connecting all services into a running end-to-end app.
+Main responsibilities:
 
-## Repository Structure
+- authentication and protected navigation
+- room creation/join flow
+- meeting UI for text, voice, and sign-language modes
+- Web PubSub WebSocket connection management
+- local gesture capture with MediaPipe
+- speech capture with browser APIs and backend fallback
 
-```text
-AccessMesh-AI/
-|-- README.md
-|-- requirements.txt
-|-- backend/                # Reserved for API/backend runtime code
-|-- docs/                   # Project documentation
-|-- frontend/               # Reserved for frontend runtime code
-|-- infrastructure/         # Reserved for IaC and deployment artifacts
-|-- services/               # Implemented service wrappers and Azure integrations
-|-- shared/                 # Shared configuration and message contracts
-```
+Important files:
 
-## Implemented Modules
+- `frontend/src/App.tsx`
+- `frontend/src/context/AuthContext.tsx`
+- `frontend/src/context/MeetingContext.tsx`
+- `frontend/src/pages/Home.tsx`
+- `frontend/src/pages/MeetingRoom.tsx`
+- `frontend/src/services/websocketService.ts`
+- `frontend/src/hooks/useSpeechRecognition.ts`
+- `frontend/src/components/GestureCamera.tsx`
 
-### Shared Layer
+### Backend
 
-- `shared/config.py`
-	- Centralizes runtime settings.
-	- Supports `.env` loading.
-	- Supports Azure Key Vault secret resolution through a custom Pydantic settings source.
-	- Declares settings for Web PubSub, Speech, OpenAI, Cosmos DB, Content Safety, Translator, Service Bus, Application Insights, JWT, and CORS.
+The backend is a FastAPI application located in `backend/`.
+The app is created in `backend/app/factory.py` and exposed by `backend/main.py`.
 
+Main responsibilities:
+
+- JWT authentication and preference updates
+- REST endpoints for chat, speech, hub, auth, and pubsub token issuance
+- message routing and content safety screening
+- orchestration of the agent mesh
+- real-time dispatch via Azure Web PubSub
+- persistence via Cosmos DB
+- optional telemetry via Application Insights
+
+Important files:
+
+- `backend/main.py`
+- `backend/app/factory.py`
+- `backend/app/message_router.py`
+- `backend/app/routes/auth_routes.py`
+- `backend/app/routes/chat_routes.py`
+- `backend/app/routes/speech_routes.py`
+- `backend/app/routes/hub_routes.py`
+- `backend/app/routes/pubsub_routes.py`
+
+### Agent Mesh
+
+The core processing pipeline is event-driven.
+Instead of directly chaining services, the system publishes typed messages into an async bus and lets
+specialized agents subscribe to the stages they care about.
+
+Flow:
+
+1. input arrives as text, speech, or gesture
+2. `MessageRouter` screens it and creates a pipeline request
+3. `AgentMeshPipeline` publishes a `TRANSCRIPTION` event
+4. `RouterAgent` decides which downstream agents should act
+5. `AccessibilityAgent` generates accessibility metadata and TTS audio
+6. `TranslationAgent` adapts the message for sign language and translates when needed
+7. `AvatarAgent` generates the final gloss sequence for sign rendering
+8. `SummaryAgent` passively accumulates final messages for later summarization
+
+Important files:
+
+- `agents/agent_bus.py`
+- `agents/pipeline.py`
+- `agents/router_agent.py`
+- `agents/accessibility_agent.py`
+- `agents/translation_agent.py`
+- `agents/avatar_agent.py`
+- `agents/summary_agent.py`
 - `shared/message_schema.py`
-	- Defines the system-wide message contract.
-	- Includes message types such as `audio_chunk`, `transcription`, `gesture`, `translated`, `accessible`, `avatar_ready`, `summary`, `system`, and `error`.
-	- Provides Pydantic models for validation and serialization.
 
-### Service Layer
+### MCP Layer
 
-- `services/webpubsub_service.py`
-	- Creates Azure Web PubSub client instances.
-	- Generates client access tokens.
-	- Sends events to all clients, a group, or a specific user.
-	- Adds and removes users from groups.
-	- Exposes a simple connection health check.
+Agents call tools through an MCP-style abstraction.
+By default, tools run in-process, but the client can also target an external MCP HTTP server.
 
-- `services/speech_service.py`
-	- Issues Speech tokens for client-side use.
-	- Performs server-side audio transcription from raw bytes.
+Registered tools:
 
-- `services/translator_service.py`
-	- Sends text to Azure Translator.
-	- Supports source-language auto-detection and target-language translation.
+- `speech_to_text_tool`
+- `gesture_recognition_tool`
+- `text_to_sign_tool`
+- `text_to_speech_tool`
+- `meeting_summary_tool`
+- `llm_classify_tool`
+- `text_translation_tool`
 
-- `services/gesture_service.py`
-	- Converts gesture labels into readable text.
-	- Recognizes gestures from hand landmarks using rule-based classification.
-	- Recognizes gestures from image frames using Azure OpenAI vision/chat completions.
+Important files:
 
-- `services/summarization_service.py`
-	- Summarizes transcript collections using Azure OpenAI.
-	- Returns summary text and key bullet points.
-	- Offers both async and sync variants.
+- `mcp/mcp_server.py`
+- `mcp/mcp_client.py`
+- `mcp/tool_registry.py`
+- `mcp/tool_executor.py`
+- `mcp/tools/`
 
-- `services/avatar_service.py`
-	- Uses Azure Speech Neural TTS.
-	- Returns audio as base64 MP3 plus viseme timing events for avatar lip-sync.
-	- Includes a placeholder for future sign-language avatar synthesis.
+## Realtime Delivery Model
 
-- `services/cosmos_service.py`
-	- Initializes Azure Cosmos DB database and containers.
-	- Stores and retrieves sessions, messages, and users.
-	- Supports async persistence operations.
+Realtime delivery is split into two parts:
 
-- `services/servicebus_service.py`
-	- Wraps Azure Service Bus topic publishing.
-	- Creates receivers for topic subscriptions.
-	- Acts as transport infrastructure for eventual agent orchestration.
+- the frontend obtains a room-scoped Web PubSub client URL from `POST /pubsub/token`
+- the frontend opens a WebSocket, joins the room group, and receives message broadcasts
 
-- `services/content_safety_service.py`
-	- Uses Azure Content Safety to analyze text.
-	- Blocks content according to a configurable severity threshold.
+The backend also returns enriched payloads immediately to the sender so the UI can update optimistically.
+History is reloaded from Cosmos DB or in-memory fallback when a participant joins late.
 
-- `services/telemetry_service.py`
-	- Configures Azure Monitor / Application Insights.
-	- Tracks spans for agent execution.
-	- Records custom telemetry events.
+## Input Flows
 
-- `services/keyvault_service.py`
-	- Reads and writes secrets from Azure Key Vault.
-	- Uses `DefaultAzureCredential`.
-	- Supports cached service instances.
+### Text
 
-## How the Intended Pipeline Works
+The frontend posts text to `POST /chat/send`.
+The backend runs the full agent pipeline and returns/broadcasts an enriched message containing:
 
-Although the orchestration layer is not yet present in this workspace, the implemented services clearly indicate the intended flow:
+- original text
+- applied accessibility features
+- optional sign gloss sequence
+- optional translated text
+- optional TTS audio
 
-1. A participant sends audio, gesture, or text input.
-2. Input is normalized into the message models from `shared/message_schema.py`.
-3. Speech and gesture services transform raw input into text.
-4. Content Safety can validate text before downstream use.
-5. Translation and accessibility-oriented processing produce audience-specific outputs.
-6. Avatar/TTS generation can create voice output with viseme data.
-7. Messages are persisted in Cosmos DB.
-8. Real-time updates are broadcast through Azure Web PubSub.
-9. Background or decoupled processing can flow through Azure Service Bus.
-10. Telemetry spans and events are captured in Application Insights.
+### Speech
 
-## Configuration Overview
+Speech currently supports two browser-side capture paths:
 
-Configuration is centralized in `shared/config.py` and currently covers:
+- preferred path: native browser `SpeechRecognition`, then send text to `POST /speech/voice`
+- fallback path: `MediaRecorder`, upload audio to `POST /speech/recognize`
 
-- Runtime settings: host, port, debug, reload.
-- Security: JWT algorithm, expiration, signing secret, CORS origins.
-- Azure Web PubSub.
-- Azure Speech.
-- Azure OpenAI for summarization and gesture recognition.
-- Avatar/TTS settings.
-- Azure Cosmos DB.
-- Azure Content Safety.
-- Azure Translator.
-- Azure Service Bus.
-- Azure Application Insights.
-- Azure Key Vault.
+The backend can transcribe through the MCP speech tool and then process the text through the same agent mesh.
 
-Secrets may come from either:
+### Gesture
 
-- Environment variables and `.env`.
-- Azure Key Vault via `AZURE_KEYVAULT_URL` and the custom settings source.
+Gesture input is detected locally in the browser with MediaPipe hand landmarks.
+The client can also use AI fallback flows to send landmarks or frames to the backend.
+The unified gesture path is posted through `POST /hub/message` with `input_type=gesture`.
 
-## Dependencies
+## Persistence
 
-The current dependency set in `requirements.txt` confirms that the repository is prepared for:
+When Azure Cosmos DB is configured, the backend stores:
 
-- FastAPI and Uvicorn.
-- Authentication with JWT.
-- Azure SDK integrations for Web PubSub, Service Bus, Cosmos DB, Speech, Content Safety, Translator, Key Vault, Identity, and Monitor.
-- Pydantic and pydantic-settings.
-- HTTP clients and multipart handling.
+- users
+- sessions
+- message history
 
-## Documentation
+When Cosmos DB is not configured, the app still runs, but persistence falls back to in-memory storage for
+message history and disabled persistence for users/sessions where applicable.
 
-- `docs/architecture.md`: architectural view of the current implementation.
-- `docs/implementation-status.md`: detailed inventory of what is implemented, partial, or pending.
+## Azure Services Used
 
-## Local Setup Notes
+The system is designed to run with optional Azure integrations:
 
-1. Create a Python virtual environment.
-2. Install dependencies from `requirements.txt`.
-3. Provide the required Azure credentials through `.env` or Key Vault.
-4. Instantiate the services from the modules in `services/` from your API layer or worker runtime.
+- Azure Web PubSub
+- Azure Service Bus
+- Azure Speech
+- Azure Cosmos DB
+- Azure AI Translator
+- Azure Content Safety
+- Azure Application Insights
+- Azure Key Vault for configuration lookup
 
-Example installation:
+Most integrations are optional in local development.
+If a service is not configured, the app typically degrades gracefully rather than failing startup.
+
+## Configuration
+
+Configuration is centralized in `shared/config.py`.
+Settings are loaded in this order:
+
+1. constructor args
+2. Azure Key Vault secrets, when `AZURE_KEYVAULT_URL` is set
+3. OS environment variables
+4. `.env`
+
+Common variables:
+
+- `APP_HOST`
+- `APP_PORT`
+- `APP_RELOAD`
+- `SECRET_KEY`
+- `WEBPUBSUB_CONNECTION_STRING`
+- `WEBPUBSUB_HUB_NAME`
+- `SERVICEBUS_CONNECTION_STRING`
+- `SERVICEBUS_TOPIC_NAME`
+- `AZURE_SPEECH_KEY`
+- `AZURE_SPEECH_REGION`
+- `COSMOS_ENDPOINT`
+- `COSMOS_KEY`
+- `TRANSLATOR_KEY`
+- `CONTENT_SAFETY_ENDPOINT`
+- `CONTENT_SAFETY_KEY`
+- `APPINSIGHTS_CONNECTION_STRING`
+- `MCP_SERVER_URL`
+- `MCP_API_KEY`
+- `AZURE_KEYVAULT_URL`
+
+## Local Development
+
+### Backend
+
+Create a virtual environment and install dependencies:
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Recommended Next Steps
+Run the backend:
 
-1. Add the backend API layer that exposes these services through FastAPI endpoints.
-2. Implement the orchestration layer that consumes and emits `shared.message_schema` models.
-3. Add a frontend that connects through Azure Web PubSub.
-4. Add infrastructure definitions under `infrastructure/`.
-5. Document environment variables in a dedicated `.env.example` file.
+```bash
+python -m backend.main
+```
+
+Default backend URL:
+
+```text
+http://localhost:8000
+```
+
+### Frontend
+
+Install dependencies:
+
+```bash
+cd frontend
+npm install
+```
+
+Run the dev server:
+
+```bash
+npm run dev
+```
+
+Default frontend URL:
+
+```text
+http://localhost:5173
+```
+
+If needed, point the frontend to a different backend with:
+
+```text
+VITE_API_URL=http://localhost:8000
+```
+
+## Key API Endpoints
+
+Auth:
+
+- `POST /auth/register`
+- `POST /auth/login`
+- `POST /auth/refresh`
+- `GET /auth/me`
+- `PUT /auth/me/preferences`
+
+Realtime:
+
+- `POST /pubsub/token`
+
+Multimodal messaging:
+
+- `POST /chat/send`
+- `GET /chat/history/{session_id}`
+- `GET /chat/summary/{session_id}`
+- `POST /speech/voice`
+- `POST /speech/recognize`
+- `GET /speech/token`
+- `POST /speech/transcribe`
+- `POST /hub/message`
+
+Health and docs:
+
+- `GET /`
+- `GET /health`
+- `GET /docs`
+- `GET /redoc`
+
+MCP:
+
+- `GET /mcp/health`
+- `GET /mcp/tools/list`
+- `POST /mcp/tools/call`
+
+## Current Constraints
+
+- The repo currently has very little top-level product documentation outside this README.
+- Frontend tests exist but are limited.
+- Some external integrations depend on Azure credentials and will run in stub or degraded mode locally.
+- The system supports graceful fallback paths, but production readiness still depends on correctly provisioning Azure services.
+
+## Status
+
+For a more explicit implementation snapshot, see:
+
+- `docs/implementation-status.md`
