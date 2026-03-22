@@ -100,7 +100,7 @@ def require_auth(
     cfg = _get_settings()
 
     if not cfg.secret_key:
-        # Open mode — useful in hackathon/dev environments
+        # Open mode — useful in dev environments
         logger.warning(
             "⚠️  AUTH OPEN MODE: SECRET_KEY is not configured. "
             "All requests are accepted as anonymous. Do NOT use in production."

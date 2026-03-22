@@ -89,7 +89,7 @@ class TokenResponse(BaseModel):
 )
 def issue_token(body: TokenRequest) -> TokenResponse:
     """
-    Dev / hackathon shortcut — disabled in production (requires app_debug=True).
+    Dev shortcut — disabled in production (requires app_debug=True).
     In production, use /auth/register + /auth/login.
     """
     from shared.config import settings as _settings  # noqa: PLC0415
@@ -193,7 +193,7 @@ async def login(request: Request, body: LoginRequest) -> AuthResponse:
     Verify credentials and return a JWT with user claims.
 
     When Cosmos DB is offline the endpoint falls back to open mode (for
-    hackathon/local dev scenarios where no DB is configured).
+    local dev scenarios where no DB is configured).
     """
     cosmos = getattr(request.app.state, "cosmos", None)
 
