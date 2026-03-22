@@ -1,3 +1,5 @@
+"""Centralised configuration management."""
+
 from __future__ import annotations
 
 import logging
@@ -9,6 +11,10 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 
 logger = logging.getLogger(__name__)
 
+# Mapping: Settings field name -> Azure Key Vault secret name
+# Convention: ALL_CAPS env names become lowercase-hyphenated KV names.
+# "app-secret-key" is used instead of "secret-key" to avoid ambiguity with KV
+# system reserved names.
 _FIELD_TO_KV_SECRET: Dict[str, str] = {
     "webpubsub_connection_string":   "webpubsub-connection-string",
     "azure_speech_key":              "azure-speech-key",
@@ -23,21 +29,17 @@ _FIELD_TO_KV_SECRET: Dict[str, str] = {
     "secret_key":                    "app-secret-key",
 }
 
+
 class KeyVaultSettingsSource(PydanticBaseSettingsSource):
     """
-    Custom Pydantic settings source that loads secrets from Azure Key Vault.
+    Pydantic-settings v2 source that reads designated secret fields from
+    Azure Key Vault.
 
-    This class attempts to retrieve secret values for configuration fields from Azure Key Vault,
-    using the mapping defined in _FIELD_TO_KV_SECRET. If the Key Vault is not configured or
-    accessible, it falls back to environment variables. Loaded secrets are stored in the _secrets
-    dictionary and are used as a source for Pydantic settings resolution.
-
-    Usage:
-        - Set the AZURE_KEYVAULT_URL environment variable to enable Key Vault lookup.
-        - Secrets are mapped by field name to Key Vault secret names via _FIELD_TO_KV_SECRET.
-        - If Key Vault is unavailable, environment variables are used instead.
+    Only active when AZURE_KEYVAULT_URL is set in the environment.
+    When inactive (App Service production path), this source returns an empty
+    dict and adds zero overhead.
     """
-    
+
     def __init__(self, settings_cls: Type[BaseSettings]) -> None:
         super().__init__(settings_cls)
         self._secrets: Dict[str, str] = {}
@@ -88,7 +90,8 @@ class KeyVaultSettingsSource(PydanticBaseSettingsSource):
 
 
 class Settings(BaseSettings):
-   
+    """Application-wide configuration loaded from Key Vault, then environment / .env file."""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -104,6 +107,7 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> Tuple[PydanticBaseSettingsSource, ...]:
+        # Priority: constructor args > Key Vault > OS env > .env file > secrets dir
         return (
             init_settings,
             KeyVaultSettingsSource(settings_cls),
@@ -112,31 +116,31 @@ class Settings(BaseSettings):
             file_secret_settings,
         )
 
-    # ── Runtime ───────────────────────────────────────────────────────────────
+    # Runtime
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     app_debug: bool = False
     app_reload: bool = False
 
-    # ── Key Vault (local dev only — NOT needed in App Service) ───────────────
+    # Key Vault (local dev only)
     azure_keyvault_url: str = ""
 
-    # ── Azure Web PubSub ──────────────────────────────────────────────────────
+    # Azure Web PubSub
     webpubsub_connection_string: str = ""
     webpubsub_hub_name: str = "accessmesh"
 
-    # ── Azure Speech ──────────────────────────────────────────────────────────
+    # Azure Speech
     azure_speech_key: str = ""
     azure_speech_region: str = ""
     speech_default_language: str = "en-US"
 
-    # ── Azure OpenAI (Gesture) ────────────────────────────────────────────────
+    # Azure OpenAI (Gesture)
     gesture_api_key: str = ""
     gesture_api_endpoint: str = ""
     gesture_api_deployment_name: str = "gpt-4o-mini"
     gesture_api_version: str = "2025-01-01-preview"
 
-    # ── Azure OpenAI ──────────────────────────────────────────────────────────
+    # Azure OpenAI
     openai_key: str = Field(default="", validation_alias=AliasChoices("azure_openai_api_key", "openai_key"))
     openai_endpoint: str = Field(default="", validation_alias=AliasChoices("azure_openai_endpoint", "openai_endpoint"))
     openai_deployment: str = Field(
@@ -148,12 +152,12 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("azure_openai_api_version", "openai_api_version"),
     )
 
-    # ── Avatar ────────────────────────────────────────────────────────────────
+    # Avatar
     avatar_api_key: str = ""
     avatar_api_endpoint: str = ""
     avatar_provider: str = "stub"
 
-    # ── Azure Cosmos DB ───────────────────────────────────────────────────────
+    # Azure Cosmos DB
     cosmos_endpoint: str = ""
     cosmos_key: str = ""
     cosmos_database: str = "accessmesh"
@@ -161,38 +165,36 @@ class Settings(BaseSettings):
     cosmos_container_messages: str = "messages"
     cosmos_container_users: str = "users"
 
-    # ── Azure Content Safety ──────────────────────────────────────────────────
+    # Azure Content Safety
     content_safety_endpoint: str = ""
     content_safety_key: str = ""
 
-    # ── Azure AI Translator ───────────────────────────────────────────────────
+    # Azure AI Translator
     translator_key: str = ""
     translator_endpoint: str = "https://api.cognitive.microsofttranslator.com"
     translator_region: str = ""
 
-    # ── Azure Service Bus ─────────────────────────────────────────────────────
+    # Azure Service Bus
     servicebus_connection_string: str = ""
     servicebus_topic_name: str = "accessmesh-events"
 
-    # ── Azure Application Insights ────────────────────────────────────────────
+    # Azure Application Insights
     appinsights_connection_string: str = ""
 
-    # ── JWT Auth ──────────────────────────────────────────────────────────────
+    # JWT Auth
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 480
+    jwt_refresh_expire_minutes: int = 10080  # 7 days
 
-    secret_key: str = Field(
-        default="",
-        description=(
-            "Application signing secret. In production set via the Key Vault secret "
-            "'app-secret-key' (resolved by App Service KV Reference) or the SECRET_KEY "
-            "environment variable. An empty or weak value will emit a startup warning."
-        ),
-    )
-    cors_origins: list[str] = Field(
-        default=["http://localhost:5173", "http://localhost:3000"],
-        description="Allowed CORS origins. Restrict to your frontend domain in production.",
-    )
+    # Pipeline & Agent Bus
+    pipeline_timeout_seconds: float = 30.0
+
+    # MCP
+    mcp_http_timeout_seconds: float = 30.0
+    mcp_api_key: str = Field(default="")
+
+    secret_key: str = Field(default="")
+    cors_origins: list[str] = Field(default=["http://localhost:5173", "http://localhost:3000"])
 
     @field_validator("secret_key", mode="after")
     @classmethod

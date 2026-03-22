@@ -1,3 +1,5 @@
+"""Avatar synthesis service — Azure Neural TTS with viseme timing events."""
+
 from __future__ import annotations
 
 import base64
@@ -7,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Azure Neural TTS — canonical voice per BCP-47 language tag.
 _DEFAULT_VOICES: Dict[str, str] = {
     "en-US": "en-US-JennyNeural",
     "en-us": "en-US-JennyNeural",
@@ -17,8 +20,10 @@ _DEFAULT_VOICES: Dict[str, str] = {
     "de":    "de-DE-KatjaNeural",
 }
 
+
 @dataclass
 class AvatarConfig:
+    """Configuration for the avatar synthesis provider."""
 
     api_key: str = ""
     api_endpoint: str = ""
@@ -27,34 +32,19 @@ class AvatarConfig:
     default_language: str = "en-US"
     timeout_seconds: float = 30.0
 
+
 class AvatarService:
-    """
-    Service for avatar-related operations, including text-to-speech (TTS) synthesis with viseme data and (future) sign language synthesis.
+    """Synthesises speech audio and viseme events via Azure Neural TTS."""
 
-    This class provides methods to synthesize speech audio and viseme events using Azure Cognitive Services, based on the provided configuration.
-    It supports dynamic configuration via the AvatarConfig dataclass and can auto-upgrade to Azure provider if credentials are available.
-
-    Methods:
-        - synthesise_tts_with_visemes: Generates TTS audio and viseme events for a given text.
-        - synthesise_sign: Placeholder for sign language avatar synthesis (not implemented).
-
-    Usage:
-        Instantiate with an AvatarConfig or allow auto-configuration from shared settings.
-        Use is_enabled to check if Azure TTS is available.
-    """
-   
     def __init__(self, config: Optional[AvatarConfig] = None) -> None:
-        """
-        Initialize the AvatarService with the given configuration or from shared settings.
-
-        Args:
-            config (Optional[AvatarConfig]): Optional configuration for the avatar service. If not provided, uses shared settings.
-        """
         if config is None:
             from shared.config import settings  # noqa: PLC0415
 
             resolved_provider = settings.avatar_provider or "stub"
 
+            # Auto-upgrade: if Speech credentials are present but provider is still
+            # "stub" (the default), silently activate the Azure provider so avatar
+            # synthesis works without explicit AVATAR_PROVIDER configuration.
             if (
                 resolved_provider == "stub"
                 and settings.azure_speech_key
@@ -77,12 +67,7 @@ class AvatarService:
 
     @property
     def is_enabled(self) -> bool:
-        """
-        Indicates whether the Azure TTS provider is enabled and properly configured.
-
-        Returns:
-            bool: True if Azure TTS is available, False otherwise.
-        """
+        """True when Azure Neural TTS credentials are present and provider is 'azure'."""
         return (
             self._config.provider == "azure"
             and bool(self._config.api_key)
@@ -96,19 +81,31 @@ class AvatarService:
         voice_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Synthesize text-to-speech (TTS) audio with viseme data using Azure Cognitive Services.
+        Synthesise *text* via Azure Neural TTS and capture viseme timing events.
 
-        Args:
-            text (str): The text to synthesize.
-            language (Optional[str]): The language code for synthesis (e.g., 'en-US'). If not provided, uses default.
-            voice_name (Optional[str]): The specific voice to use. If not provided, uses default for the language.
+        Parameters
+        ----------
+        text        : Plain text or SSML snippet to synthesise.
+        language    : BCP-47 language tag (e.g. 'pt-BR', 'en-US').
+                      Falls back to ``AvatarConfig.default_language``.
+        voice_name  : Override the default neural voice for *language*.
 
-        Returns:
-            Dict[str, Any]: A dictionary containing base64-encoded audio, viseme events, duration, language, and voice info.
+        Returns
+        -------
+        {
+            "audio_b64"    : str,  # base64 MP3 audio bytes
+            "content_type" : str,  # "audio/mpeg"
+            "viseme_events": list, # [{offset_ms: float, viseme_id: int}, ...]
+            "duration_ms"  : float,
+            "language"     : str,
+            "voice_name"   : str,
+            "stub"         : bool  # always False on success
+        }
 
-        Raises:
-            RuntimeError: If the service is not enabled or credentials are missing.
-            ImportError: If the Azure Speech SDK is not installed.
+        Raises
+        ------
+        RuntimeError  when credentials are missing or synthesis fails.
+        ImportError   when azure-cognitiveservices-speech is not installed.
         """
         if not self.is_enabled:
             raise RuntimeError(
@@ -141,6 +138,7 @@ class AvatarService:
             subscription=self._config.api_key,
             region=self._config.speech_region,
         )
+        # Request 16 kHz 128 kbps mono MP3 — compact format suitable for WebSocket delivery.
         speech_config.set_speech_synthesis_output_format(
             speechsdk.SpeechSynthesisOutputFormat.Audio16Khz128KBitRateMonoMp3
         )
@@ -148,11 +146,14 @@ class AvatarService:
 
         viseme_events: List[Dict[str, Any]] = []
 
+        # audio_config=None → capture audio to result.audio_data (no speaker output).
         synthesizer = speechsdk.SpeechSynthesizer(
             speech_config=speech_config,
             audio_config=None,
         )
 
+        # Subscribe to viseme event — fired for each phoneme during synthesis.
+        # SDK offset unit: 100-nanosecond ticks → convert to milliseconds.
         synthesizer.viseme_received.connect(
             lambda evt: viseme_events.append(
                 {
@@ -162,6 +163,7 @@ class AvatarService:
             )
         )
 
+        # Use SSML with mstts:express-as for natural prosody in pt-BR and en-US.
         ssml = (
             f"<speak version='1.0' xml:lang='{effective_lang}' "
             f"xmlns:mstts='http://www.w3.org/2001/mstts'>"
@@ -192,6 +194,7 @@ class AvatarService:
                 "stub": False,
             }
 
+        # Synthesis failed — extract detailed error message from cancellation details.
         cancellation = speechsdk.SpeechSynthesisCancellationDetails.from_result(result)
         error_msg = f"reason={cancellation.reason}, details={cancellation.error_details}"
         logger.error("AvatarService: synthesis failed — %s", error_msg)
@@ -203,14 +206,9 @@ class AvatarService:
         language: str = "libras",
     ) -> Dict[str, Any]:
         """
-        Placeholder for 3D sign-language avatar synthesis.
-
-        Args:
-            gloss_sequence (List[str]): The sequence of glosses (sign language tokens) to synthesize.
-            language (str, optional): The sign language code. Defaults to "libras".
-
-        Raises:
-            NotImplementedError: Always, as this feature is not yet implemented.
+        3D sign-language avatar synthesis (reserved for future avatar API integration).
+        The current implementation delegates to the client-side SVG avatar in
+        AvatarSignView.tsx which renders gloss sequences without a server round-trip.
         """
         raise NotImplementedError(
             "AvatarService: 3D sign-language avatar synthesis is not yet implemented. "

@@ -1,3 +1,5 @@
+"""Pydantic schemas shared across all AccessMesh-AI services."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -6,6 +8,8 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
+
+
 
 class MessageType(str, Enum):
     """Type of message traversing the hub."""

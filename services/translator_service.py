@@ -1,3 +1,5 @@
+"""Azure AI Translator (Cognitive Services) wrapper."""
+
 from __future__ import annotations
 
 import logging
@@ -20,19 +22,9 @@ class TranslatorConfig:
 
 
 class TranslatorService:
-    """
-    Service for translating text using Azure Cognitive Services Translator.
-
-    This class provides methods to translate text between languages using Azure's Translator API.
-    """
+    """Calls the Azure AI Translator REST API for text translation."""
 
     def __init__(self, config: Optional[TranslatorConfig] = None) -> None:
-        """
-        Initialize the TranslatorService with the given configuration or from shared settings.
-
-        Args:
-            config (Optional[TranslatorConfig]): Optional configuration for the translator. If not provided, uses shared settings.
-        """
         if config is None:
             from shared.config import settings  # noqa: PLC0415
             if settings.translator_key:
@@ -53,7 +45,6 @@ class TranslatorService:
             self._enabled = True
             logger.info("TranslatorService: ready (region=%s)", self._region or "global")
 
-
     async def translate(
         self,
         text: str,
@@ -61,18 +52,8 @@ class TranslatorService:
         source_language: Optional[str] = None,
     ) -> str:
         """
-        Asynchronously translate text to a target language using Azure Translator.
-
-        Args:
-            text (str): The text to translate.
-            target_language (str): The target language code (e.g., 'en', 'pt-BR').
-            source_language (Optional[str]): The source language code. If not provided, auto-detects.
-
-        Returns:
-            str: The translated text.
-
-        Raises:
-            RuntimeError: If the service is not properly configured.
+        Translate `text` to `target_language` using Azure AI Translator.
+        Raises RuntimeError when the service is not configured.
         """
         if not self._enabled:
             raise RuntimeError(
@@ -81,6 +62,7 @@ class TranslatorService:
         if not text.strip():
             return text
 
+        # Skip unnecessary round-trip when languages match
         if source_language and source_language.split("-")[0] == target_language.split("-")[0]:
             return text
 
@@ -111,10 +93,4 @@ class TranslatorService:
 
     @property
     def is_enabled(self) -> bool:
-        """
-        Indicates whether the TranslatorService is enabled and properly configured.
-
-        Returns:
-            bool: True if the service is enabled, False otherwise.
-        """
         return self._enabled

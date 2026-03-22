@@ -1,16 +1,4 @@
-"""
-services/servicebus_service.py
-──────────────────────────────
-Azure Service Bus service wrapper for the Agent Mesh.
-
-Provides a thin async infrastructure layer over the Azure Service Bus SDK:
-  - Persistent topic sender (reused across sends for efficiency)
-  - Subscription receiver factory (one per MessageType)
-  - Raises RuntimeError when connection string is not configured
-
-The AgentBus (agents/agent_bus.py) owns all fan-out / correlation logic.
-This service is pure transport infrastructure.
-"""
+"""Azure Service Bus service wrapper for the Agent Mesh."""
 
 from __future__ import annotations
 
@@ -30,19 +18,7 @@ class ServiceBusConfig(BaseModel):
 
 
 class ServiceBusService:
-    """
-    Async wrapper around the Azure Service Bus SDK (azure-servicebus>=7.12.0).
-
-    Typical usage in factory.py:
-        svc = ServiceBusService()
-        await agent_bus.start(sb_service=svc)
-        ...
-        await svc.close()
-
-    When no connection string is provided, is_enabled returns False and
-    send_message / create_receiver raise RuntimeError.
-    Ensure SERVICEBUS_CONNECTION_STRING is set before instantiating.
-    """
+    """Async wrapper around the Azure Service Bus SDK (azure-servicebus)."""
 
     def __init__(self, config: Optional[ServiceBusConfig] = None) -> None:
         if config is None:
