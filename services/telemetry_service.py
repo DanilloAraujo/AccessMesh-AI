@@ -1,3 +1,5 @@
+"""Azure Application Insights telemetry via OpenTelemetry."""
+
 from __future__ import annotations
 
 import logging
@@ -8,21 +10,10 @@ from typing import Any, Dict, Generator, Optional
 logger = logging.getLogger(__name__)
 
 
-
 class TelemetryService:
-    """
-    Service for tracking telemetry and events using Azure Application Insights and OpenTelemetry.
-
-    This class provides methods to track agent execution spans and custom events, supporting both enabled and disabled telemetry modes.
-    """
+    """Wraps Azure Monitor OpenTelemetry for Application Insights integration."""
 
     def __init__(self, connection_string: Optional[str] = None) -> None:
-        """
-        Initialize the TelemetryService with the given Application Insights connection string or from shared settings.
-
-        Args:
-            connection_string (Optional[str]): The Application Insights connection string. If not provided, uses shared settings.
-        """
         if connection_string is None:
             from shared.config import settings  # noqa: PLC0415
             connection_string = settings.appinsights_connection_string or None
@@ -50,14 +41,13 @@ class TelemetryService:
         self, agent_name: str, attributes: Optional[Dict[str, Any]] = None
     ) -> Generator[None, None, None]:
         """
-        Context manager to track the execution of an agent span for telemetry.
+        Context manager that tracks an agent span in Application Insights.
+        Also logs elapsed time locally regardless of App Insights availability.
 
-        Args:
-            agent_name (str): The name of the agent or operation.
-            attributes (Optional[Dict[str, Any]]): Optional attributes to attach to the span.
+        Usage::
 
-        Yields:
-            None
+            async with telemetry.track_agent("accessibility_agent"):
+                result = await accessibility_agent.process(msg)
         """
         start = time.perf_counter()
         if self._enabled:
@@ -79,13 +69,7 @@ class TelemetryService:
                 logger.debug("[telemetry] %s — %.1f ms", agent_name, elapsed_ms)
 
     def track_event(self, name: str, properties: Optional[Dict[str, Any]] = None) -> None:
-        """
-        Track a custom event in the current telemetry span.
-
-        Args:
-            name (str): The event name.
-            properties (Optional[Dict[str, Any]]): Optional event properties as a dictionary.
-        """
+        """Track a named custom event with optional properties."""
         logger.debug("[telemetry] event=%s props=%s", name, properties)
         if not self._enabled:
             return
@@ -100,10 +84,4 @@ class TelemetryService:
 
     @property
     def is_enabled(self) -> bool:
-        """
-        Indicates whether telemetry is enabled and configured.
-
-        Returns:
-            bool: True if telemetry is enabled, False otherwise.
-        """
         return self._enabled

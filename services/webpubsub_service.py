@@ -1,3 +1,5 @@
+"""Azure Web PubSub service wrapper."""
+
 from __future__ import annotations
 
 import json
@@ -10,35 +12,20 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+
+
 class WebPubSubConfig(BaseModel):
+    """Web PubSub service configuration (read from environment variables)."""
+
     connection_string: str
     hub_name: str = "accessmesh"
 
+
+
 class WebPubSubService:
-    """
-    Service for integration with Azure Web PubSub.
-
-    This class encapsulates common operations for real-time communication using Azure Web PubSub,
-    including access token generation, sending messages to all, groups, or specific users,
-    and managing user groups.
-
-    Main methods:
-        - get_client_access_token: Generates an access token for clients to connect to the hub.
-        - send_to_all: Sends a message to all clients connected to the hub.
-        - send_to_group: Sends a message to a specific group of clients.
-        - send_to_user: Sends a message to a specific user.
-        - add_user_to_group: Adds a user to a group.
-        - remove_user_from_group: Removes a user from a group.
-        - check_connection: Checks if the service connection is functional.
-    """
+    """Wrapper around Azure's WebPubSubServiceClient."""
 
     def __init__(self, config: Optional[WebPubSubConfig] = None) -> None:
-        """
-        Initialize the WebPubSubService with the given configuration or from shared settings.
-
-        Args:
-            config (Optional[WebPubSubConfig]): Optional configuration for Web PubSub. If not provided, uses shared settings.
-        """
         if config is None:
             from shared.config import settings  # noqa: PLC0415
             config = WebPubSubConfig(
@@ -66,12 +53,6 @@ class WebPubSubService:
 
     @property
     def is_enabled(self) -> bool:
-        """
-        Indicates whether the WebPubSubService is enabled and properly configured.
-
-        Returns:
-            bool: True if the service is enabled, False otherwise.
-        """
         return self._client is not None
 
 
@@ -82,22 +63,7 @@ class WebPubSubService:
         roles: Optional[list[str]] = None,
         minutes_to_expire: int = 60,
     ) -> Dict[str, Any]:
-        """
-        Generate an access token for a client to connect to the Web PubSub hub.
-
-        Args:
-            user_id (str): The user ID for the token.
-            groups (Optional[list[str]]): Optional list of groups the user can join.
-            roles (Optional[list[str]]): Optional list of roles for the user.
-            minutes_to_expire (int): Token expiration time in minutes.
-
-        Returns:
-            Dict[str, Any]: A dictionary containing the token, URL, user ID, and hub name.
-
-        Raises:
-            RuntimeError: If the service is not configured.
-            AzureError: If token generation fails.
-        """
+        """Generate a short-lived access token for a participant to connect to Web PubSub."""
         if self._client is None:
             raise RuntimeError("WebPubSubService is not configured — set WEBPUBSUB_CONNECTION_STRING.")
         try:
@@ -120,16 +86,7 @@ class WebPubSubService:
 
 
     def send_to_all(self, message: Dict[str, Any]) -> None:
-        """
-        Send a message to all clients connected to the hub.
-
-        Args:
-            message (Dict[str, Any]): The message payload to send.
-
-        Raises:
-            RuntimeError: If the service is not configured.
-            AzureError: If sending fails.
-        """
+        """Send a message to all clients connected to the hub."""
         if self._client is None:
             raise RuntimeError(
                 "WebPubSubService is not configured — set WEBPUBSUB_CONNECTION_STRING."
@@ -145,17 +102,7 @@ class WebPubSubService:
             raise
 
     def send_to_group(self, group: str, message: Dict[str, Any]) -> None:
-        """
-        Send a message to a specific group of clients.
-
-        Args:
-            group (str): The group name.
-            message (Dict[str, Any]): The message payload to send.
-
-        Raises:
-            RuntimeError: If the service is not configured.
-            AzureError: If sending fails.
-        """
+        """Send a message to a specific group (session/room)."""
         if self._client is None:
             raise RuntimeError(
                 "WebPubSubService is not configured — set WEBPUBSUB_CONNECTION_STRING."
@@ -176,17 +123,7 @@ class WebPubSubService:
             raise
 
     def send_to_user(self, user_id: str, message: Dict[str, Any]) -> None:
-        """
-        Send a message to a specific user.
-
-        Args:
-            user_id (str): The user ID.
-            message (Dict[str, Any]): The message payload to send.
-
-        Raises:
-            RuntimeError: If the service is not configured.
-            AzureError: If sending fails.
-        """
+        """Send a message to a specific user."""
         if self._client is None:
             raise RuntimeError(
                 "WebPubSubService is not configured — set WEBPUBSUB_CONNECTION_STRING."
@@ -204,17 +141,7 @@ class WebPubSubService:
 
 
     def add_user_to_group(self, user_id: str, group: str) -> None:
-        """
-        Add a user to a group.
-
-        Args:
-            user_id (str): The user ID.
-            group (str): The group name.
-
-        Raises:
-            RuntimeError: If the service is not configured.
-            AzureError: If the operation fails.
-        """
+        """Adds a user to a group (session)."""
         if self._client is None:
             raise RuntimeError(
                 "WebPubSubService is not configured — set WEBPUBSUB_CONNECTION_STRING."
@@ -227,17 +154,7 @@ class WebPubSubService:
             raise
 
     def remove_user_from_group(self, user_id: str, group: str) -> None:
-        """
-        Remove a user from a group.
-
-        Args:
-            user_id (str): The user ID.
-            group (str): The group name.
-
-        Raises:
-            RuntimeError: If the service is not configured.
-            AzureError: If the operation fails.
-        """
+        """Removes a user from a group (session)."""
         if self._client is None:
             raise RuntimeError(
                 "WebPubSubService is not configured — set WEBPUBSUB_CONNECTION_STRING."
@@ -250,15 +167,11 @@ class WebPubSubService:
             raise
 
     def check_connection(self) -> bool:
-        """
-        Check if the WebPubSubService connection is functional.
-
-        Returns:
-            bool: True if the connection is healthy, False otherwise.
-        """
+        """Return True if the Web PubSub connection is operational."""
         if self._client is None:
             return False
         try:
+            # Generate a test token — lightweight operation with no side effect
             self._client.get_client_access_token(
                 user_id="healthcheck", minutes_to_expire=1
             )

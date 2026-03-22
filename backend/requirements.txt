@@ -1,0 +1,6 @@
+# ───────────────────────────────────────────────────────────────────────
+# AccessMesh-AI — Backend requirements
+# Re-exported from the root requirements.txt for IDE / Docker convenience.
+# To install: pip install -r backend/requirements.txt
+# ───────────────────────────────────────────────────────────────────────
+-r ../requirements.txt

@@ -1,3 +1,5 @@
+"""Sign-language / gesture recognition service."""
+
 from __future__ import annotations
 
 import json
@@ -9,12 +11,15 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+
+
 @dataclass
 class GestureConfig:
+    """Configuration for the gesture/sign recognition provider."""
 
     api_key: str = ""
     api_endpoint: str = ""
-    model_name: str = "stub"
+    model_name: str = "stub"        # "stub" | "azure_openai" | "custom_vision"
     deployment_name: str = "gpt-4o"
     api_version: str = "2025-01-01-preview"
     confidence_threshold: float = 0.7
@@ -22,22 +27,10 @@ class GestureConfig:
 
 
 
-
 class GestureService:
-    """
-    Service for gesture recognition using rule-based and Azure OpenAI methods.
-
-    This class provides methods to recognize gestures from labels, hand landmarks, or image frames (base64),
-    supporting both local rule-based and cloud-based (OpenAI) approaches.
-    """
+    """Wraps an external gesture / sign-language recognition endpoint."""
 
     def __init__(self, config: Optional[GestureConfig] = None) -> None:
-        """
-        Initialize the GestureService with the given configuration or from shared settings.
-
-        Args:
-            config (Optional[GestureConfig]): Optional configuration for gesture recognition. If not provided, uses shared settings.
-        """
         if config is None:
             from shared.config import settings  # noqa: PLC0415
             config = GestureConfig(
@@ -54,15 +47,7 @@ class GestureService:
         self,
         gesture_label: str,
     ) -> Dict[str, Any]:
-        """
-        Recognize a gesture from a label string.
-
-        Args:
-            gesture_label (str): The gesture label (e.g., 'thumbs_up').
-
-        Returns:
-            Dict[str, Any]: A dictionary with the recognized text, label, and confidence.
-        """
+        """Convert a pre-classified gesture label into natural-language text."""
         text = gesture_label.replace("_", " ").capitalize()
         logger.debug("GestureService.recognise_from_label: '%s' → '%s'", gesture_label, text)
         return {"text": text, "gesture_label": gesture_label, "confidence": 1.0}
@@ -72,15 +57,6 @@ class GestureService:
     def _classify_landmarks_rule_based(
         landmarks: List[Dict[str, float]],
     ) -> Dict[str, Any]:
-        """
-        Rule-based classification of hand landmarks into gesture labels.
-
-        Args:
-            landmarks (List[Dict[str, float]]): List of hand landmark points.
-
-        Returns:
-            Dict[str, Any]: A dictionary with the recognized text, label, and confidence.
-        """
         if len(landmarks) < 21:
             return {"text": "", "gesture_label": "unknown", "confidence": 0.0}
 
@@ -128,15 +104,6 @@ class GestureService:
         self,
         landmarks: List[Dict[str, float]],
     ) -> Dict[str, Any]:
-        """
-        Recognize a gesture from a list of hand landmarks using rule-based logic.
-
-        Args:
-            landmarks (List[Dict[str, float]]): List of hand landmark points.
-
-        Returns:
-            Dict[str, Any]: A dictionary with the recognized text, label, and confidence.
-        """
         result = self._classify_landmarks_rule_based(landmarks)
         logger.debug(
             "GestureService.recognise_from_landmarks: %s (conf=%.2f)",
@@ -150,21 +117,7 @@ class GestureService:
         frame_b64: str,
         mime_type: str = "image/jpeg",
     ) -> Dict[str, Any]:
-        """
-        Recognize a gesture from a base64-encoded image frame using Azure OpenAI.
-
-        Args:
-            frame_b64 (str): The base64-encoded image data.
-            mime_type (str, optional): The MIME type of the image. Defaults to "image/jpeg".
-
-        Returns:
-            Dict[str, Any]: A dictionary with the recognized text, label, and confidence.
-
-        Raises:
-            RuntimeError: If the service is not properly configured.
-            json.JSONDecodeError: If the response cannot be parsed.
-            httpx.HTTPStatusError: If the HTTP request fails.
-        """
+        """Send a base64-encoded video frame to a vision endpoint for gesture classification."""
         if not self._config.api_endpoint or not self._config.api_key or self._config.model_name == "stub":
             raise RuntimeError(
                 "GestureService: Azure OpenAI is not configured — "

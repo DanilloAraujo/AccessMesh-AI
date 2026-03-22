@@ -1,3 +1,5 @@
+"""Azure Cosmos DB service for persistent session and message storage."""
+
 from __future__ import annotations
 
 import logging
@@ -6,7 +8,9 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+
 class CosmosConfig:
+    """Configuration for Cosmos DB."""
 
     def __init__(
         self,
@@ -25,22 +29,13 @@ class CosmosConfig:
         self.container_users = container_users
 
 
-
 class CosmosService:
     """
-    Service for interacting with Azure Cosmos DB for sessions, messages, and users.
-
-    This class provides asynchronous methods to initialize the Cosmos DB client, manage sessions, messages, and user data,
-    and check if the service is enabled. It supports upserting and retrieving documents in dedicated containers.
+    Wraps Azure Cosmos DB NoSQL API for session and message persistence.
+    Raises RuntimeError when credentials are not configured or the connection fails.
     """
 
     def __init__(self, config: Optional[CosmosConfig] = None) -> None:
-        """
-        Initialize the CosmosService with the given configuration or from shared settings.
-
-        Args:
-            config (Optional[CosmosConfig]): Optional configuration for Cosmos DB. If not provided, uses shared settings.
-        """
         if config is None:
             from shared.config import settings  # noqa: PLC0415
             if settings.cosmos_endpoint and settings.cosmos_key:
@@ -60,12 +55,7 @@ class CosmosService:
         self._users_container: Any = None
 
     async def initialize(self) -> None:
-        """
-        Asynchronously initialize the Cosmos DB client and containers.
-
-        Raises:
-            RuntimeError: If connection to Cosmos DB fails.
-        """
+        """Async setup — call from the lifespan startup event after creating this service."""
         if not self._config:
             return
         try:
@@ -109,23 +99,15 @@ class CosmosService:
             ) from exc
 
     async def close(self) -> None:
-        """
-        Asynchronously close the Cosmos DB client connection.
-        """
+        """Close the underlying async client connection."""
         if self._client:
             await self._client.close()
             self._client = None
 
-    # ── Session operations ───────────────────────────────────────────────────
+    # Session operations
 
     async def upsert_session(self, session_id: str, data: Dict[str, Any]) -> None:
-        """
-        Upsert (insert or update) a session document in the sessions container.
-
-        Args:
-            session_id (str): The session ID.
-            data (Dict[str, Any]): The session data to store.
-        """
+        """Persist or update a session document."""
         if not self._enabled:
             raise RuntimeError("CosmosService is not initialized — call initialize() after configuring COSMOS_ENDPOINT and COSMOS_KEY.")
         doc = {**data, "id": session_id, "session_id": session_id}
@@ -136,15 +118,7 @@ class CosmosService:
             logger.warning("CosmosService.upsert_session failed: %s", exc)
 
     async def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Retrieve a session document by session ID.
-
-        Args:
-            session_id (str): The session ID.
-
-        Returns:
-            Optional[Dict[str, Any]]: The session document if found, otherwise None.
-        """
+        """Read a session document, returning None if not found."""
         if not self._enabled:
             raise RuntimeError("CosmosService is not initialized — call initialize() after configuring COSMOS_ENDPOINT and COSMOS_KEY.")
         try:
@@ -155,12 +129,7 @@ class CosmosService:
             return None
 
     async def list_active_sessions(self) -> List[Dict[str, Any]]:
-        """
-        List all active session documents.
-
-        Returns:
-            List[Dict[str, Any]]: A list of active session documents.
-        """
+        """Return all sessions with status == 'active'."""
         if not self._enabled:
             raise RuntimeError("CosmosService is not initialized — call initialize() after configuring COSMOS_ENDPOINT and COSMOS_KEY.")
         try:
@@ -174,16 +143,10 @@ class CosmosService:
             logger.warning("CosmosService.list_active_sessions failed: %s", exc)
             return []
 
-    # ── Message operations ───────────────────────────────────────────────────
+    # Message operations
 
     async def append_message(self, session_id: str, message: Dict[str, Any]) -> None:
-        """
-        Append a message document to the messages container for a session.
-
-        Args:
-            session_id (str): The session ID.
-            message (Dict[str, Any]): The message data to store.
-        """
+        """Persist a broadcast message payload to Cosmos."""
         if not self._enabled:
             raise RuntimeError("CosmosService is not initialized — call initialize() after configuring COSMOS_ENDPOINT and COSMOS_KEY.")
         doc = {
@@ -200,16 +163,7 @@ class CosmosService:
     async def get_messages(
         self, session_id: str, limit: int = 200
     ) -> List[Dict[str, Any]]:
-        """
-        Retrieve messages for a session, ordered by stored time.
-
-        Args:
-            session_id (str): The session ID.
-            limit (int, optional): Maximum number of messages to retrieve. Defaults to 200.
-
-        Returns:
-            List[Dict[str, Any]]: A list of message documents.
-        """
+        """Return the last `limit` messages for a session, ordered by timestamp."""
         if not self._enabled:
             raise RuntimeError("CosmosService is not initialized — call initialize() after configuring COSMOS_ENDPOINT and COSMOS_KEY.")
         try:
@@ -231,24 +185,12 @@ class CosmosService:
 
     @property
     def is_enabled(self) -> bool:
-        """
-        Indicates whether the CosmosService is enabled and initialized.
-
-        Returns:
-            bool: True if the service is enabled, False otherwise.
-        """
         return self._enabled
 
-    # ── User operations ──────────────────────────────────────────────
+    # User operations
 
     async def upsert_user(self, user_id: str, data: Dict[str, Any]) -> None:
-        """
-        Upsert (insert or update) a user document in the users container.
-
-        Args:
-            user_id (str): The user ID.
-            data (Dict[str, Any]): The user data to store.
-        """
+        """Persist or update a user document."""
         if not self._enabled:
             raise RuntimeError("CosmosService is not initialized — call initialize() after configuring COSMOS_ENDPOINT and COSMOS_KEY.")
         doc = {**data, "id": user_id, "user_id": user_id}
@@ -259,15 +201,7 @@ class CosmosService:
             logger.warning("CosmosService.upsert_user failed: %s", exc)
 
     async def get_user(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Retrieve a user document by user ID.
-
-        Args:
-            user_id (str): The user ID.
-
-        Returns:
-            Optional[Dict[str, Any]]: The user document if found, otherwise None.
-        """
+        """Read a user document by user_id, returning None if not found."""
         if not self._enabled:
             raise RuntimeError("CosmosService is not initialized — call initialize() after configuring COSMOS_ENDPOINT and COSMOS_KEY.")
         try:
@@ -278,15 +212,7 @@ class CosmosService:
             return None
 
     async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
-        """
-        Retrieve a user document by email address.
-
-        Args:
-            email (str): The user's email address.
-
-        Returns:
-            Optional[Dict[str, Any]]: The user document if found, otherwise None.
-        """
+        """Find a user document by email (cross-partition query)."""
         if not self._enabled:
             raise RuntimeError("CosmosService is not initialized — call initialize() after configuring COSMOS_ENDPOINT and COSMOS_KEY.")
         try:
