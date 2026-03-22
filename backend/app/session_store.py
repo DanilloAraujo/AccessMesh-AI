@@ -1,4 +1,5 @@
-"""Shared in-memory session message store for AccessMesh-AI."""
+"""Shared in-memory session message store for AccessMesh-AI.
+"""
 
 from __future__ import annotations
 
