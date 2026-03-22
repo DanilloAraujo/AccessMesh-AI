@@ -81,8 +81,3 @@ coverage.xml
 
 # Logs
 *.log
-
-# Shared-specific ignores
-# (add any shared-specific ignores below)
-.shared/__pycache__/
-.services/__pycache__/
