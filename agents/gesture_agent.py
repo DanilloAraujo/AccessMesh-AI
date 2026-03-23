@@ -88,7 +88,7 @@ class GestureAgent(BaseAgent):
         Receive a GestureMessage, map the gesture label to natural-language
         text, and re-publish a TranscriptionMessage so the full Agent Mesh
         pipeline processes it (RouterAgent → AccessibilityAgent →
-        TranslationAgent → AvatarAgent).
+        TranslationAgent → AccessibilityAgent fan-in).
 
         This makes gesture input a first-class citizen: it flows through
         exactly the same enrichment pipeline as speech input.

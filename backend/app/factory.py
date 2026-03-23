@@ -11,7 +11,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from agents.accessibility_agent import AccessibilityAgent
-from agents.avatar_agent import AvatarAgent
 from agents.gesture_agent import GestureAgent
 from agents.pipeline import AgentMeshPipeline
 from agents.speech_agent import SpeechAgent
@@ -141,9 +140,8 @@ def create_app() -> FastAPI:
         from mcp.mcp_client import mcp_client
 
         _router_agent      = RouterAgent()
-        _access_agent      = AccessibilityAgent(mcp_client=mcp_client)
+        _access_agent      = AccessibilityAgent()
         _translation_agent = TranslationAgent()
-        _avatar_agent      = AvatarAgent(mcp_client=mcp_client)
         _gesture_agent     = GestureAgent()
         _summary_agent     = SummaryAgent()
         _speech_agent      = SpeechAgent(mcp_client=mcp_client)
@@ -152,7 +150,6 @@ def create_app() -> FastAPI:
         agent_registry.register("router_agent",        _router_agent)
         agent_registry.register("accessibility_agent", _access_agent)
         agent_registry.register("translation_agent",   _translation_agent)
-        agent_registry.register("avatar_agent",        _avatar_agent)
         agent_registry.register("gesture_agent",       _gesture_agent)
         agent_registry.register("summary_agent",       _summary_agent)
         agent_registry.register("speech_agent",        _speech_agent)
@@ -161,7 +158,7 @@ def create_app() -> FastAPI:
         # ``subscribes_to`` list — this is the only wiring needed.
         # No agent holds a reference to any other agent.
         for _agent in (_router_agent, _access_agent, _translation_agent,
-                       _avatar_agent, _gesture_agent, _summary_agent,
+                       _gesture_agent, _summary_agent,
                        _speech_agent):
             _agent.register(agent_bus)
 

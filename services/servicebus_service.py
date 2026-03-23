@@ -31,6 +31,8 @@ class ServiceBusService:
 
         self._config = config
         self._client = None
+        # Cached persistent sender — avoids opening a new AMQP connection per message.
+        self._sender = None
 
         if config.connection_string:
             try:
@@ -77,11 +79,21 @@ class ServiceBusService:
             application_properties={"message_type": message_type},
         )
         try:
-            async with self._client.get_topic_sender(
-                topic_name=self._config.topic_name
-            ) as sender:
-                await sender.send_messages(msg)
+            # Reuse the cached sender to avoid a new TCP/AMQP handshake per message.
+            if self._sender is None:
+                self._sender = self._client.get_topic_sender(
+                    topic_name=self._config.topic_name
+                )
+                await self._sender.__aenter__()
+            await self._sender.send_messages(msg)
         except Exception as exc:
+            # Invalidate the cached sender so the next call reconnects.
+            if self._sender is not None:
+                try:
+                    await self._sender.__aexit__(None, None, None)
+                except Exception:
+                    pass
+                self._sender = None
             logger.warning(
                 "ServiceBusService.send_message failed for type '%s': %s",
                 message_type, exc,
@@ -109,7 +121,13 @@ class ServiceBusService:
         )
 
     async def close(self) -> None:
-        """Close the underlying Service Bus client."""
+        """Close the cached sender and the underlying Service Bus client."""
+        if self._sender is not None:
+            try:
+                await self._sender.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self._sender = None
         if self._client:
             try:
                 await self._client.close()

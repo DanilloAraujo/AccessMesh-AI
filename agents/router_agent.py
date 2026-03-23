@@ -3,11 +3,9 @@ Router Agent — decides which downstream agents process each transcription.
 
 Role (Agent Mesh): router_agent
 
-Routing policy:
-  1. If text is non-empty, always activate: accessibility_agent, translation_agent, avatar_agent
-  2. If AZURE_OPENAI credentials are provided, GPT-4o classifies the intent
-     to optionally skip agents (e.g. skip TTS for pure command messages).
-  3. Falls back to activating all agents when LLM is unavailable.
+Routing policy (deterministic, no LLM overhead):
+  - Non-empty text  → activate both: accessibility_agent, translation_agent
+  - Empty / command → accessibility_agent only (subtitles, no translation)
 
 Input : TranscriptionMessage
 Output: RoutedMessage
@@ -16,10 +14,9 @@ Output: RoutedMessage
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, ClassVar, List, Optional, cast
+from typing import TYPE_CHECKING, ClassVar, List
 
 from agents.base_agent import BaseAgent
-from mcp.mcp_client import MCPClient, mcp_client as _default_mcp_client
 from shared.message_schema import MessageType, RoutedMessage, TranscriptionMessage
 
 if TYPE_CHECKING:
@@ -28,7 +25,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_AGENTS: List[str] = ["accessibility_agent", "translation_agent", "avatar_agent"]
+_ALL_AGENTS: List[str] = ["accessibility_agent", "translation_agent"]
+_ACCESSIBILITY_ONLY: List[str] = ["accessibility_agent"]
 
 
 class RouterAgent(BaseAgent):
@@ -36,32 +34,22 @@ class RouterAgent(BaseAgent):
     Analyses a TranscriptionMessage and returns a RoutedMessage containing
     the ordered list of agents to invoke.
 
-    When Azure OpenAI credentials are available, GPT-4o classifies the
-    message intent to make intelligent routing decisions. Falls back to
-    activating all agents for any non-empty text.
+    Routing is purely rule-based (no LLM call) to keep per-message latency
+    under 1 ms.  Full fan-out to both agents is the default for any natural-
+    language text; empty/command-only messages skip the translation path.
     """
 
     # Agent Mesh: consume TRANSCRIPTION events from the bus
     subscribes_to: ClassVar[List[MessageType]] = [MessageType.TRANSCRIPTION]
 
-    def __init__(self, mcp_client: Optional[MCPClient] = None) -> None:
-        # Routing decisions are delegated to llm_classify_tool via MCP — no direct
-        # OpenAI credentials needed here; the tool encapsulates that dependency.
-        self._mcp_client = mcp_client or _default_mcp_client
-
     async def route(self, msg: TranscriptionMessage) -> RoutedMessage:
-        target_agents: List[str] = _DEFAULT_AGENTS
-        stub = True
-
-        if msg.text.strip():
-            # Delegate routing classification to the MCP llm_classify_tool.
-            # This keeps the agent layer free of direct LLM/HTTP coupling.
-            result = await self._mcp_client.call_tool("llm_classify_tool", text=msg.text)
-            if result.success and result.data:
-                agents = result.data.get("agents")
-                stub = result.data.get("stub", True)
-                if isinstance(agents, list) and agents:
-                    target_agents = agents
+        # Route to both agents for natural-language text; accessibility-only
+        # for empty messages or pure command tokens (digits/punctuation only).
+        text = msg.text.strip()
+        if text and not text.replace(" ", "").isdigit() and any(c.isalpha() for c in text):
+            target_agents = _ALL_AGENTS
+        else:
+            target_agents = _ACCESSIBILITY_ONLY
 
         routed = RoutedMessage(
             session_id=msg.session_id,
@@ -72,8 +60,8 @@ class RouterAgent(BaseAgent):
         )
 
         logger.info(
-            "RouterAgent: session=%s text_len=%d → agents=%s (llm_stub=%s)",
-            msg.session_id, len(msg.text), target_agents, stub,
+            "RouterAgent: session=%s text_len=%d → agents=%s",
+            msg.session_id, len(msg.text), target_agents,
         )
         return routed
 
@@ -87,8 +75,7 @@ class RouterAgent(BaseAgent):
         """
         correlation_id = event.metadata.get("correlation_id", event.message_id)
         try:
-            transcription = cast(TranscriptionMessage, event)
-            # route() is fully async — await directly, no thread pool needed.
+            transcription: TranscriptionMessage = event  # type: ignore[assignment]
             routed = await self.route(transcription)
             routed.metadata["correlation_id"] = correlation_id
             await bus.publish(routed)

@@ -29,13 +29,6 @@ _LANGUAGE_MAP = {
     "de": Language.DE,
 }
 
-_SIGN_LANGUAGE_MAP = {
-    "pt-BR": "libras",
-    "en-US": "asl",
-    "en": "asl",
-    "pt": "libras",
-}
-
 
 class TranslationAgent(BaseAgent):
     """Adapts messages for sign-language delivery and translates across languages."""
@@ -60,47 +53,22 @@ class TranslationAgent(BaseAgent):
         target_language_code: Optional[str] = None,
     ) -> TranslatedMessage:
         """
-        Adapt the message for sign-language delivery and translate if needed.
-        Both operations are delegated to the MCP tool ``text_translation_tool``.
+        Translate the message into the target language.
+        Only runs when source and target languages differ (base language codes).
+        Sign-language adaptation has been removed — all output is plain text.
         """
         source_lang = _LANGUAGE_MAP.get(source_language, Language.EN_US)
         effective_target = target_language_code or source_language
 
-        logger.info(
-            "TranslationAgent.process — session=%s lang=%s→%s text=%s",
-            msg.session_id, source_language, effective_target, msg.text[:80],
-        )
-
-        # Determine sign language based on source language (LIBRAS for pt-BR, ASL for en-US)
-        sign_lang = _SIGN_LANGUAGE_MAP.get(
-            source_language,
-            _SIGN_LANGUAGE_MAP.get(source_language.split("-")[0], "asl"),
-        )
-
-        # Sign-language structural adaptation via MCP tool
-        adapt_result = await self._mcp_client.call_tool(
-            "text_translation_tool",
-            text=msg.text,
-            action="adapt_for_sign",
-            sign_language=sign_lang,
-        )
-        if not adapt_result.success:
-            raise RuntimeError(
-                f"TranslationAgent: text_translation_tool (adapt_for_sign) failed — "
-                f"{adapt_result.error}"
-            )
-        assert adapt_result.data is not None
-        sign_adapted = adapt_result.data["adapted_text"]
-        msg.metadata["sign_adapted_text"] = sign_adapted
-        msg.metadata["sign_language"] = sign_lang
-        logger.debug("TranslationAgent: sign_adapted='%s' (sign_lang=%s)", sign_adapted[:60], sign_lang)
-
-        # Language translation (only when source and target differ)
         translated_text = msg.text
         source_base = source_language.split("-")[0]
         target_base = effective_target.split("-")[0]
 
         if source_base != target_base:
+            logger.info(
+                "TranslationAgent.process — session=%s lang=%s→%s text=%s",
+                msg.session_id, source_language, effective_target, msg.text[:80],
+            )
             translate_result = await self._mcp_client.call_tool(
                 "text_translation_tool",
                 text=msg.text,
@@ -108,21 +76,23 @@ class TranslationAgent(BaseAgent):
                 source_language=source_language,
                 target_language=effective_target,
             )
-            if not translate_result.success:
-                raise RuntimeError(
-                    f"TranslationAgent: text_translation_tool (translate) failed — "
-                    f"{translate_result.error}"
+            if translate_result.success and translate_result.data:
+                translated_text = translate_result.data.get("translated_text") or msg.text
+                provider = translate_result.data.get("provider", "unknown")
+                logger.debug(
+                    "TranslationAgent: translated via %s → '%s'", provider, translated_text[:60]
                 )
-            assert translate_result.data is not None
-            translated_text = translate_result.data["translated_text"]
-            provider = translate_result.data.get("provider", "unknown")
-            logger.debug(
-                "TranslationAgent: translated via %s → '%s'", provider, translated_text[:60]
-            )
-            if translated_text and translated_text != msg.text:
-                msg.metadata["translated_text"] = translated_text
+            else:
+                logger.warning(
+                    "TranslationAgent: text_translation_tool failed — %s",
+                    translate_result.error if translate_result else "no result",
+                )
 
         target_lang_enum = _LANGUAGE_MAP.get(effective_target, source_lang)
+        metadata = dict(msg.metadata)
+        if translated_text and translated_text != msg.text:
+            metadata["translated_text"] = translated_text
+
         return TranslatedMessage(
             session_id=msg.session_id,
             sender_id=msg.sender_id,
@@ -130,7 +100,7 @@ class TranslationAgent(BaseAgent):
             translated_text=translated_text,
             source_language=source_lang,
             target_language=target_lang_enum,
-            metadata=dict(msg.metadata),
+            metadata=metadata,
         )
 
     # ── Agent Mesh handler ────────────────────────────────────────────
@@ -139,7 +109,7 @@ class TranslationAgent(BaseAgent):
         """
         Receive a RoutedMessage directly from the bus (fan-out parallel with
         AccessibilityAgent), adapt for sign language, translate, and publish
-        TranslatedMessage for AvatarAgent fan-in.
+        TranslatedMessage for AccessibilityAgent fan-in.
 
         Key architectural decision: subscribing to ROUTED instead of
         ACCESSIBLE means TranslationAgent runs concurrently with

@@ -82,7 +82,7 @@ export function useSpeechRecognition({
             : 'audio/webm';
 
         let recorder: MediaRecorder;
-        
+
         const recordCycle = () => {
             if (!isListeningRef.current || !stream) return;
 
@@ -97,7 +97,7 @@ export function useSpeechRecognition({
             recorder.onstop = async () => {
                 const blob = new Blob(chunksRef.current, { type: mimeType });
                 chunksRef.current = [];
-                
+
                 // If still listening, immediately begin the next slice recording
                 if (isListeningRef.current) recordCycle();
 
@@ -106,7 +106,7 @@ export function useSpeechRecognition({
                 const language = sessionStorage.getItem('language') ?? localStorage.getItem('preferredLanguage') ?? 'en-US';
                 const targetLanguage = sessionStorage.getItem('targetLanguage') ?? localStorage.getItem('preferredLanguage') ?? 'en-US';
                 console.log('[useSpeechRecognition] MediaRecorder slice ready — size=%d lang=%s target=%s', blob.size, language, targetLanguage);
-                
+
                 try {
                     const audioB64Result = await recognizeAudio(blob, sessionId, userId, language, targetLanguage);
                     const text = audioB64Result.text.trim();
@@ -121,7 +121,7 @@ export function useSpeechRecognition({
             };
 
             recorder.start();
-            
+
             // Stop this cycle after CHUNK_MS, triggering onstop -> sends data -> restarts
             setTimeout(() => {
                 if (recorder.state === 'recording') recorder.stop();
@@ -169,7 +169,7 @@ export function useSpeechRecognition({
             try {
                 const msg = await processSpeech(text, language, targetLanguage);
                 if (msg) {
-                    console.log('[useSpeechRecognition] Pipeline response — id=%s features=%o audio=%s', msg.id, msg.features_applied, msg.audio_b64 ? 'yes' : 'no');
+                    console.log('[useSpeechRecognition] Pipeline response — id=%s features=%o', msg.id, msg.features_applied);
                     setTranscript(msg.content);
                     onTranscriptRef.current?.(msg);
                 }
@@ -237,7 +237,7 @@ export function useSpeechRecognition({
         } else if (nativeRecRef.current) {
             nativeRecRef.current.stop();
         }
-        
+
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(t => t.stop());
             streamRef.current = null;

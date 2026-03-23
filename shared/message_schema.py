@@ -19,7 +19,6 @@ class MessageType(str, Enum):
     ROUTED            = "routed"
     ACCESSIBLE        = "accessible"
     TRANSLATED        = "translated"
-    AVATAR_READY      = "avatar_ready"
     SUMMARY           = "summary"
     CHAT              = "chat"
     SYSTEM            = "system"
@@ -164,30 +163,6 @@ class TranslatedMessage(BaseMessage):
     target_language: Language = Field(..., description="Target language.")
 
 
-class AvatarReadyMessage(BaseMessage):
-    """Signal that the avatar_agent has completed processing."""
-
-    message_type: MessageType = MessageType.AVATAR_READY
-    avatar_url: Optional[str] = Field(
-        default=None,
-        description="Temporary URL for the generated avatar video/image.",
-    )
-    animation_data: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Animation data for client-side rendering.",
-    )
-    confidence: Optional[float] = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Speech-to-text transcription confidence (0–1) propagated from TranscriptionMessage.",
-    )
-    viseme_events: Optional[List[Dict[str, Any]]] = Field(
-        default=None,
-        description="Azure Neural TTS viseme timing events [{offset_ms, viseme_id}] for avatar lip-sync.",
-    )
-
-
 class SystemMessage(BaseMessage):
     """System control message (joins, leaves, heartbeats)."""
 
@@ -259,7 +234,6 @@ AnyMessage = (
     | RoutedMessage
     | AccessibleMessage
     | TranslatedMessage
-    | AvatarReadyMessage
     | MeetingSummaryMessage
     | SystemMessage
     | ErrorMessage
@@ -272,7 +246,6 @@ _MESSAGE_CLASS_MAP: Dict[str, type] = {
     MessageType.ROUTED:       RoutedMessage,
     MessageType.ACCESSIBLE:   AccessibleMessage,
     MessageType.TRANSLATED:   TranslatedMessage,
-    MessageType.AVATAR_READY: AvatarReadyMessage,
     MessageType.SUMMARY:      MeetingSummaryMessage,
     MessageType.SYSTEM:       SystemMessage,
     MessageType.ERROR:        ErrorMessage,

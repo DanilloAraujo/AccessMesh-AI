@@ -77,9 +77,7 @@ class VoiceResponse(BaseModel):
     text: str
     source: str
     features_applied: List[str]
-    sign_gloss: Optional[List[dict]] = None
     translated_content: Optional[str] = None
-    audio_b64: Optional[str] = None
 
 
 class SpeechTokenResponse(BaseModel):
@@ -108,7 +106,7 @@ async def process_voice(
 ) -> VoiceResponse:
     """
     Receives browser-transcribed text and runs it through:
-      RouterAgent → AccessibilityAgent → (TranslationAgent) → AvatarAgent
+      RouterAgent → AccessibilityAgent ‖ TranslationAgent → fan-in ACCESSIBLE
     Then broadcasts the result to all session participants.
     """
     if not body.text.strip():
@@ -128,8 +126,8 @@ async def process_voice(
             display_name=body.display_name,
         )
         logger.info(
-            "[/speech/voice] ← id=%s features=%s audio=%s",
-            payload.get('id'), payload.get('features_applied'), 'yes' if payload.get('audio_b64') else 'no',
+            "[/speech/voice] ← id=%s features=%s",
+            payload.get('id'), payload.get('features_applied'),
         )
         # Persist to Cosmos (primary) or in-memory store (fallback).
         await _save_message(request, body.session_id, payload)
@@ -138,9 +136,7 @@ async def process_voice(
             text=payload.get("content", body.text),
             source="voice",
             features_applied=payload.get("features_applied", []),
-            sign_gloss=payload.get("sign_gloss") or None,
             translated_content=payload.get("translated_content"),
-            audio_b64=payload.get("audio_b64"),
         )
     except Exception as exc:
         logger.exception("Error processing voice input")
@@ -170,7 +166,7 @@ async def recognize_audio(
       2. Base64-encode and pass to the MCP ``speech_to_text_tool`` for
          transcription (Azure Cognitive Services or stub).
       3. Feed the recognised text into the normal voice pipeline
-         (RouterAgent → AccessibilityAgent → TranslationAgent → AvatarAgent).
+         (RouterAgent → AccessibilityAgent ‖ TranslationAgent → fan-in ACCESSIBLE).
       4. The result is broadcast to all session participants.
 
     The browser never needs the Azure Speech SDK.
@@ -206,8 +202,11 @@ async def recognize_audio(
 
     recognised_text: str = (stt_result.data or {}).get("text", "").strip()
     if not recognised_text:
+        # Return an empty-audio sentinel so the frontend can skip without
+        # creating a message that has a falsy id (which confuses recipient filters).
+        import uuid as _uuid  # noqa: PLC0415
         return VoiceResponse(
-            message_id="",
+            message_id=str(_uuid.uuid4()),
             text="",
             source="voice",
             features_applied=[],
@@ -222,8 +221,8 @@ async def recognize_audio(
             target_language=target_language,
         )
         logger.info(
-            "[/speech/recognize] ← id=%s features=%s audio=%s",
-            payload.get('id'), payload.get('features_applied'), 'yes' if payload.get('audio_b64') else 'no',
+            "[/speech/recognize] ← id=%s features=%s",
+            payload.get('id'), payload.get('features_applied'),
         )
         # Persist to Cosmos (primary) or in-memory store (fallback).
         await _save_message(request, session_id, payload)
@@ -232,9 +231,7 @@ async def recognize_audio(
             text=payload.get("content", recognised_text),
             source="voice",
             features_applied=payload.get("features_applied", []),
-            sign_gloss=payload.get("sign_gloss") or None,
             translated_content=payload.get("translated_content"),
-            audio_b64=payload.get("audio_b64"),
         )
     except Exception as exc:
         logger.exception("Error in voice pipeline after transcription")

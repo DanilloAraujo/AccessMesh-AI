@@ -32,13 +32,28 @@ HandlerFn = Callable[["BaseMessage", "AsyncAgentBus"], Awaitable[None]]
 # Correlation key used by watchers: (MessageType, correlation_id)
 _WatchKey = Tuple[MessageType, str]
 
-# Only terminal / externally-useful event types are forwarded to the Service Bus
-# topic. Internal pipeline steps (ROUTED, ACCESSIBLE, TRANSLATED) run entirely
-# in-process and have no external consumers — forwarding them would multiply
-# SB costs ×N subscriptions for every text message with zero benefit.
+# ──────────────────────────────────────────────────────────────────
+# SERVICE BUS SUBSCRIPTION AUDIT
+# ──────────────────────────────────────────────────────────────────
+# This backend forwards ONLY the 4 terminal event types below to the
+# Azure Service Bus topic.  Internal pipeline steps (ROUTED, ACCESSIBLE,
+# TRANSLATED) are dispatched entirely in-process for performance.
+#
+# IMPORTANT: If Azure is configured with more than these 4 subscription
+# filters, the extra subscriptions will silently accumulate messages that
+# are NEVER consumed by this service.  Required Azure SB subscriptions:
+#   1. sub-transcription   → filter: message_type = 'TRANSCRIPTION'
+#   2. sub-accessible      → filter: message_type = 'ACCESSIBLE'
+#   3. sub-summary         → filter: message_type = 'SUMMARY'
+#   4. sub-error           → filter: message_type = 'ERROR'
+#
+# Any additional subscriptions (e.g. ROUTED, ACCESSIBLE, TRANSLATED,
+# GESTURE_RESULT, AUDIO_CHUNK, etc.) are NOT backed by a receiver in this
+# service and should be removed from Azure to avoid unbounded message buildup.
+# ──────────────────────────────────────────────────────────────────
 _SB_FORWARD_TYPES: frozenset[str] = frozenset({
-    MessageType.TRANSCRIPTION,   # raw speech — useful for analytics / audit
-    MessageType.AVATAR_READY,    # terminal pipeline result
+    MessageType.TRANSCRIPTION,   # raw speech — analytics / audit
+    MessageType.ACCESSIBLE,      # terminal pipeline result (text ready)
     MessageType.SUMMARY,         # meeting summary
     MessageType.ERROR,           # errors
 })
@@ -106,6 +121,14 @@ class AsyncAgentBus:
             logger.info(
                 "[AgentBus] Service Bus configured (single-instance mode) — "
                 "dispatching in-process, forwarding events to SB topic for external consumers."
+            )
+            logger.warning(
+                "[AgentBus] SERVICE BUS SUBSCRIPTION CHECK: this service only forwards "
+                "%d event types (%s) to the SB topic. If Azure is configured with more "
+                "subscriptions, the extra ones will accumulate messages without any consumer. "
+                "Remove unused subscriptions in Azure Portal to avoid unbounded message buildup.",
+                len(_SB_FORWARD_TYPES),
+                ", ".join(sorted(_SB_FORWARD_TYPES)),
             )
 
         # Start periodic cleanup of stale event store entries
@@ -191,9 +214,21 @@ class AsyncAgentBus:
             )
 
     async def _sb_forward(self, body: bytes, message_type: str) -> None:
-        """Fire-and-forget SB send. Errors are logged at DEBUG to avoid noise."""
+        """Fire-and-forget SB send with a hard timeout to protect the event loop.
+
+        Azure SB SDK retries on AMQP errors can block the event loop for 1-2 s.
+        The 0.8 s timeout ensures pipeline tasks are never starved by SB retries.
+        """
         try:
-            await self._sb_service.send_message(body, message_type)
+            await asyncio.wait_for(
+                self._sb_service.send_message(body, message_type),
+                timeout=0.8,
+            )
+        except asyncio.TimeoutError:
+            logger.debug(
+                "[AgentBus] SB forward timed out (non-fatal) for %s — "
+                "connection may be unstable", message_type,
+            )
         except Exception as exc:
             logger.debug("[AgentBus] SB forward failed (non-fatal): %s", exc)
 
@@ -274,8 +309,21 @@ class AsyncAgentBus:
 
         await self.publish(seed_event)
 
+        t_publish = time.perf_counter()
         try:
             result = await asyncio.wait_for(fut, timeout=timeout)
+            wait_ms = (time.perf_counter() - t_publish) * 1000
+            if wait_ms > 200:
+                logger.warning(
+                    "[AgentBus] publish_and_collect slow wake-up: %.0f ms after publish "
+                    "(collect_type=%s corr=%s) — event loop may be overloaded",
+                    wait_ms, collect_type, correlation_id,
+                )
+            else:
+                logger.debug(
+                    "[AgentBus] publish_and_collect resolved in %.0f ms (collect_type=%s)",
+                    wait_ms, collect_type,
+                )
             return result
         except asyncio.TimeoutError:
             logger.warning(
@@ -304,7 +352,7 @@ class AsyncAgentBus:
         """
         Wait for an event of *event_type* that carries *correlation_id*.
 
-        Used by AvatarAgent to wait for the ACCESSIBLE event produced by
+        Used by AccessibilityAgent to signal the terminal ACCESSIBLE event.
         AccessibilityAgent in parallel with the TRANSLATED event.
 
         If the event already arrived (fan-out beat fan-in), it is returned

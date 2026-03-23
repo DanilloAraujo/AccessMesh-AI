@@ -1,17 +1,15 @@
 import { Brain, Camera, Copy, FileText, Hand, Info, Languages, Maximize2, MessageSquare, Mic, MicOff, Minimize2, Send, Settings, Shield } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import AvatarSignView from '../components/AvatarSignView';
 import GestureCamera from '../components/GestureCamera';
 import MeetingControls from '../components/MeetingControls';
 import SummaryModal from '../components/SummaryModal';
 import TranscriptPanel from '../components/TranscriptPanel';
 import { useMeeting } from '../context/MeetingContext';
 import { useTranslation } from '../hooks/useTranslation';
-import type { GestureFrameResult } from '../services/gestureService';
 
 const MeetingRoom: React.FC = () => {
   const {
-    glossSequence, updateGloss, sessionId, userId, displayName,
+    sessionId, userId, displayName,
     sendGesture, addMessage, replaceMessage, sendChatMessage,
     setMicEnabled, startListening, stopListening, recognitionState,
     targetLanguage, setTargetLanguage, communicationMode, connectionStatus,
@@ -99,8 +97,6 @@ const MeetingRoom: React.FC = () => {
   }, [cameraOn]);
 
   const handleGestureDetected = (gestureLabel: string) => {
-    // Update local avatar immediately
-    updateGloss([{ gloss: gestureLabel.replace(/_/g, ' ').toUpperCase(), duration_ms: 1200 }]);
     // Optimistic local entry so the sender sees their own gesture in chat/transcript
     const tempId = `gesture_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     addMessage({
@@ -111,16 +107,10 @@ const MeetingRoom: React.FC = () => {
       timestamp: new Date().toISOString(),
       source: 'gesture',
     });
-    // Route through pipeline → broadcasts text + gloss + TTS to all participants
+    // Route through pipeline → broadcasts text + TTS to all participants
     sendGesture(gestureLabel, targetLanguage)
       .then((msg) => { if (msg) replaceMessage(tempId, msg); })
       .catch(() => { });
-  };
-
-  const handleGestureResult = (result: GestureFrameResult) => {
-    if (result.gloss_sequence?.length > 0) {
-      updateGloss(result.gloss_sequence);
-    }
   };
 
   const handleTextSend = async (e: React.FormEvent) => {
@@ -139,7 +129,7 @@ const MeetingRoom: React.FC = () => {
     }
   };
 
-  
+
   const consentContent = isSign
     ? {
       title: t('consent.camera.title'),
@@ -166,7 +156,7 @@ const MeetingRoom: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen p-4 gap-4 bg-[#0f172a] text-white overflow-hidden">
-      
+
       {!consentGiven && (
         <div
           role="dialog"
@@ -223,7 +213,7 @@ const MeetingRoom: React.FC = () => {
         </div>
       )}
 
-      
+
       {consentGiven && (
         <div
           role="note"
@@ -246,9 +236,9 @@ const MeetingRoom: React.FC = () => {
         </div>
       )}
 
-      
+
       <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0 overflow-hidden">
-        
+
         <div className="flex-1 flex flex-col gap-4 min-w-0 min-h-0 overflow-hidden">
           {/* Main video/interaction card */}
           <div ref={mainCardRef} className="flex-1 glass-card relative flex items-center justify-center overflow-hidden">
@@ -436,20 +426,16 @@ const MeetingRoom: React.FC = () => {
           )}
         </div>
 
-        
-        {isSign && <div className="flex flex-row gap-4 shrink-0">
-          <div className="flex flex-col w-72 shrink-0">
+
+        {isSign && (
+          <div className="flex flex-col w-80 shrink-0">
             <GestureCamera
               onGestureDetected={handleGestureDetected}
-              onGestureResult={handleGestureResult}
               autoStart={consentGiven}
             />
           </div>
-          <div className="flex flex-col w-72 shrink-0">
-            <AvatarSignView glossSequence={glossSequence} idleText={t('avatar.idle')} />
-          </div>
-        </div>}
-      </div>{/* end column content wrapper */}
+        )}
+      </div>{/* end flex-row layout */}
 
       {/* Summary Modal — always accessible from all modes */}
       <SummaryModal open={summaryOpen} onClose={() => setSummaryOpen(false)} sessionId={sessionId} />

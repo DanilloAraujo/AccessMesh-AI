@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 
@@ -23,6 +23,21 @@ class MCPClient:
 
     def __init__(self, server_url: str = "") -> None:
         self._url = (server_url or _MCP_SERVER_URL).rstrip("/")
+        # Persistent client shared across all tool calls — avoids per-call TCP
+        # handshake overhead.  Initialised lazily on first HTTP call.
+        self._http: Optional[httpx.AsyncClient] = None
+
+    async def _get_http(self) -> httpx.AsyncClient:
+        if self._http is None or self._http.is_closed:
+            from shared.config import settings as _settings  # noqa: PLC0415
+            self._http = httpx.AsyncClient(timeout=_settings.mcp_http_timeout_seconds)
+        return self._http
+
+    async def aclose(self) -> None:
+        """Close the persistent HTTP client (call on app shutdown)."""
+        if self._http and not self._http.is_closed:
+            await self._http.aclose()
+            self._http = None
 
     async def call_tool(self, name: str, **kwargs: Any) -> ToolResult:
         """Invoke an MCP tool by name with the given keyword arguments."""
@@ -45,14 +60,14 @@ class MCPClient:
             headers["X-MCP-API-Key"] = _settings.mcp_api_key
 
         try:
-            async with httpx.AsyncClient(timeout=_settings.mcp_http_timeout_seconds) as client:
-                resp = await client.post(
-                    f"{self._url}/tools/call",
-                    json=payload,
-                    headers=headers,
-                )
-                resp.raise_for_status()
-                return ToolResult(**resp.json())
+            client = await self._get_http()
+            resp = await client.post(
+                f"{self._url}/tools/call",
+                json=payload,
+                headers=headers,
+            )
+            resp.raise_for_status()
+            return ToolResult(**resp.json())
         except Exception as exc:
             logger.error("MCPClient: HTTP call to tool '%s' failed — %s", name, exc)
             return ToolResult(tool_name=name, success=False, error=str(exc))

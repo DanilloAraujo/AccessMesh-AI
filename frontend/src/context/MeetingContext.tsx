@@ -5,17 +5,12 @@ import {
     useState,
     type ReactNode,
 } from 'react';
+import { useParams } from 'react-router-dom';
 import { useSpeechRecognition, type RecognitionState } from '../hooks/useSpeechRecognition';
 import { notifyLanguageChange } from '../hooks/useTranslation';
 import { useWebSocket, type UseWebSocketReturn } from '../hooks/useWebSocket';
 import { type ChatMessage, type ConnectionStatus, type WebSocketService } from '../services/websocketService';
 import { useAuth, type CommunicationMode } from './AuthContext';
-import { useParams } from 'react-router-dom';
-
-export interface GlossItem {
-    gloss: string;
-    duration_ms: number;
-}
 
 export interface MeetingContextValue {
     userId: string;
@@ -24,14 +19,11 @@ export interface MeetingContextValue {
     communicationMode: CommunicationMode;
     connectionStatus: ConnectionStatus;
     messages: ChatMessage[];
-    glossSequence: GlossItem[];
-    sendMessage: UseWebSocketReturn['sendMessage'];
     sendChatMessage: UseWebSocketReturn['sendChatMessage'];
     processSpeech: UseWebSocketReturn['processSpeech'];
     sendGesture: UseWebSocketReturn['sendGesture'];
     addMessage: UseWebSocketReturn['addMessage'];
     replaceMessage: UseWebSocketReturn['replaceMessage'];
-    updateGloss: (items: GlossItem[]) => void;
     targetLanguage: string;
     setTargetLanguage: (lang: string) => void;
     micEnabled: boolean;
@@ -49,10 +41,8 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
     const { roomId } = useParams<{ roomId?: string }>();
     const activeSessionId = roomId || 'default-room';
 
-    const { status, messages, userId, sessionId, sendMessage, sendChatMessage, processSpeech, sendGesture, addMessage, replaceMessage, wsClient } =
+    const { status, messages, userId, sessionId, sendChatMessage, processSpeech, sendGesture, addMessage, replaceMessage, wsClient } =
         useWebSocket(activeSessionId, user?.userId, user?.displayName);
-
-    const [glossSequence, setGlossSequence] = useState<GlossItem[]>([]);
 
     const [targetLanguage, _setTargetLanguage] = useState<string>(
         () => user?.preferredLanguage ?? localStorage.getItem('preferredLanguage') ?? 'en-US',
@@ -83,27 +73,8 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         onTranscript((msg) => {
             addMessage(msg);
-            const gloss = (msg as unknown as Record<string, unknown>).sign_gloss;
-            if (Array.isArray(gloss) && gloss.length > 0) {
-                setGlossSequence(gloss as GlossItem[]);
-            }
         });
     }, [onTranscript, addMessage]);
-
-    useEffect(() => {
-        const unsub = wsClient.onMessage((msg) => {
-            if (msg.type === 'message' && msg.data?.sign_gloss) {
-                const raw = msg.data.sign_gloss as GlossItem[];
-                const senderIsMe = msg.data.from === (user?.displayName ?? wsClient.displayName)
-                    || msg.data.from === wsClient.userId;
-                const myMode = user?.communicationMode ?? 'text';
-                if (Array.isArray(raw) && raw.length > 0 && !senderIsMe && myMode === 'sign_language') {
-                    setGlossSequence(raw);
-                }
-            }
-        });
-        return unsub;
-    }, [user?.userId, user?.communicationMode, user?.displayName, wsClient]);
 
     return (
         <MeetingContext.Provider
@@ -114,14 +85,11 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
                 communicationMode: user?.communicationMode ?? 'text',
                 connectionStatus: status,
                 messages,
-                glossSequence,
-                sendMessage,
                 sendChatMessage,
                 processSpeech,
                 sendGesture,
                 addMessage,
                 replaceMessage,
-                updateGloss: setGlossSequence,
                 targetLanguage,
                 setTargetLanguage,
                 micEnabled,

@@ -26,8 +26,8 @@ TranscriptEntry = Union[TranscriptionMessage, GestureMessage]
 class SummaryAgent(BaseAgent):
     """Produces a MeetingSummaryMessage from session transcript entries."""
 
-    # Agent Mesh: passively accumulate every terminal AVATAR_READY event
-    subscribes_to: ClassVar[List[MessageType]] = [MessageType.AVATAR_READY]
+    # Agent Mesh: passively accumulate every ACCESSIBLE event (terminal pipeline result)
+    subscribes_to: ClassVar[List[MessageType]] = [MessageType.ACCESSIBLE]
 
     def __init__(
         self,
