@@ -130,6 +130,9 @@ class AsyncAgentBus:
                 len(_SB_FORWARD_TYPES),
                 ", ".join(sorted(_SB_FORWARD_TYPES)),
             )
+            # Pre-warm the AMQP sender so the first real message send doesn't
+            # run into a cold TCP+TLS+AMQP handshake inside the 0.8 s timeout.
+            await self._sb_service.initialize()
 
         # Start periodic cleanup of stale event store entries
         self._cleanup_task = asyncio.create_task(
@@ -222,15 +225,15 @@ class AsyncAgentBus:
         try:
             await asyncio.wait_for(
                 self._sb_service.send_message(body, message_type),
-                timeout=0.8,
+                timeout=1.5,
             )
         except asyncio.TimeoutError:
-            logger.debug(
-                "[AgentBus] SB forward timed out (non-fatal) for %s — "
-                "connection may be unstable", message_type,
+            logger.warning(
+                "[AgentBus] SB forward timed out after 0.8 s for %s — "
+                "AMQP connection may be slow or unavailable", message_type,
             )
         except Exception as exc:
-            logger.debug("[AgentBus] SB forward failed (non-fatal): %s", exc)
+            logger.warning("[AgentBus] SB forward failed (non-fatal) for %s: %s", message_type, exc)
 
     async def _dispatch_local(self, event: BaseMessage) -> None:
         """

@@ -21,18 +21,9 @@ logger = logging.getLogger(__name__)
 
 
 class AccessibilityAgent(BaseAgent):
-    """
-    Terminal fan-in agent in the pipeline.
+    """Enriches messages with multimodal accessibility features."""
 
-    Flow (parallel with TranslationAgent):
-    1. Receives RoutedMessage from the bus.
-    2. Waits up to 4 s for the correlated TranslatedMessage (fan-in).
-    3. Merges translated_text into metadata.
-    4. Publishes AccessibleMessage — the terminal event collected by the pipeline.
-
-    No TTS or sign-gloss generation: all participants receive text.
-    """
-
+    # Agent Mesh: consume ROUTED events from the bus
     subscribes_to: ClassVar[List[MessageType]] = [MessageType.ROUTED]
 
     async def process(
