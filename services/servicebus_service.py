@@ -59,6 +59,34 @@ class ServiceBusService:
         """True when a live Service Bus client is available."""
         return self._client is not None
 
+    async def initialize(self) -> None:
+        """Pre-warm the AMQP sender so the first send_message call is fast.
+
+        Called once at startup (agent_bus.start).  A 1-3 s TCP+TLS+AMQP
+        handshake is acceptable here; it never is inside the hot message path.
+        """
+        if not self._client or self._sender is not None:
+            return
+        try:
+            self._sender = self._client.get_topic_sender(
+                topic_name=self._config.topic_name
+            )
+            await self._sender.__aenter__()
+            logger.info(
+                "ServiceBusService: AMQP sender pre-warmed — topic=%s",
+                self._config.topic_name,
+            )
+        except Exception as exc:
+            if self._sender is not None:
+                try:
+                    await self._sender.__aexit__(None, None, None)
+                except Exception:
+                    pass
+                self._sender = None
+            logger.warning(
+                "ServiceBusService: sender pre-warm failed (will retry on first message): %s", exc
+            )
+
     async def send_message(self, body: bytes, message_type: str) -> None:
         """
         Send a raw bytes payload to the configured topic.
@@ -86,18 +114,23 @@ class ServiceBusService:
                 )
                 await self._sender.__aenter__()
             await self._sender.send_messages(msg)
-        except Exception as exc:
-            # Invalidate the cached sender so the next call reconnects.
+        except BaseException as exc:
+            # Use BaseException (not just Exception) to also catch
+            # asyncio.CancelledError (Python 3.8+: CancelledError is BaseException).
+            # asyncio.wait_for cancels the coroutine via CancelledError when the
+            # timeout fires, so without this the sender would be left in a
+            # half-open, broken state and the next send attempt would also fail.
             if self._sender is not None:
                 try:
                     await self._sender.__aexit__(None, None, None)
                 except Exception:
                     pass
                 self._sender = None
-            logger.warning(
-                "ServiceBusService.send_message failed for type '%s': %s",
-                message_type, exc,
-            )
+            if isinstance(exc, Exception):  # don't log CancelledError as a warning
+                logger.warning(
+                    "ServiceBusService.send_message failed for type '%s': %s",
+                    message_type, exc,
+                )
             raise
 
     def create_receiver(self, subscription_name: str):
