@@ -55,7 +55,6 @@ class ChatSendRequest(BaseModel):
     user_id: str      = Field(..., max_length=128,   description="Sender user_id.")
     display_name: str = Field(default="", max_length=128, description="Sender display name.")
     language: str     = Field(default="en-US", max_length=10, description="BCP-47 source language of the sender.")
-    target_language: str = Field(default="en-US", max_length=10, description="BCP-47 target language for translation.")
 
 
 class ChatSendResponse(BaseModel):
@@ -66,7 +65,6 @@ class ChatSendResponse(BaseModel):
     text: str
     features_applied: list[str] = []
     sign_gloss: Optional[list[dict]] = None
-    translated_content: Optional[str] = None
     audio_b64: Optional[str] = None
 
 
@@ -85,9 +83,9 @@ async def send_message(
     _claims: dict = Depends(require_auth),
 ) -> ChatSendResponse:
     """
-    Routes a plain-text chat message through the full AI pipeline
-    (router → accessibility → translation → avatar) and broadcasts the
-    enriched result (with sign_gloss) to all participants in the session.
+    Routes a plain-text chat message through the AI pipeline
+    (router → accessibility) and broadcasts the enriched result
+    (with sign_gloss) to all participants in the session.
     """
     if not body.text.strip():
         raise HTTPException(status_code=422, detail="text cannot be empty.")
@@ -99,7 +97,6 @@ async def send_message(
             user_id=body.user_id,
             display_name=body.display_name,
             language=body.language,
-            target_language=body.target_language,
         )
 
         cosmos = _get_cosmos(request)
@@ -121,7 +118,6 @@ async def send_message(
             text=payload["content"],
             features_applied=payload.get("features_applied", []),
             sign_gloss=payload.get("sign_gloss"),
-            translated_content=payload.get("translated_content"),
             audio_b64=payload.get("audio_b64"),
         )
     except Exception as exc:

@@ -28,7 +28,7 @@ _SIGN_LANG_NAMES = {
 }
 
 
-class SignAdaptationTool:
+class SignToTextTool:
     """
     MCP tool that adapts spoken-language text for sign-language delivery
     using Azure OpenAI GPT-4o.
@@ -123,4 +123,4 @@ class SignAdaptationTool:
 
 
 # Backwards-compatible alias so any existing call-sites using the old class name still work.
-TextTranslationTool = SignAdaptationTool
+TextTranslationTool = SignToTextTool

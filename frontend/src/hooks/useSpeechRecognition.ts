@@ -108,7 +108,7 @@ export function useSpeechRecognition({
                 console.log('[useSpeechRecognition] MediaRecorder slice ready — size=%d lang=%s target=%s', blob.size, language, targetLanguage);
 
                 try {
-                    const audioB64Result = await recognizeAudio(blob, sessionId, userId, language, targetLanguage);
+                    const audioB64Result = await recognizeAudio(blob, sessionId, userId, language);
                     const text = audioB64Result.text.trim();
                     if (text) {
                         setTranscript(text);

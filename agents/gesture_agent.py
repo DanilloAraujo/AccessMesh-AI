@@ -34,7 +34,7 @@ class GestureAgent(BaseAgent):
 
     Agent Mesh role: subscribes to GESTURE events, translates the gesture
     label to natural text, and re-publishes a TranscriptionMessage so the
-    full pipeline (RouterAgent → Accessibility → Translation → Avatar) runs.
+    full pipeline (RouterAgent → AccessibilityAgent) runs.
     """
 
     # Agent Mesh: consume GESTURE events and re-inject as TRANSCRIPTION
@@ -87,8 +87,7 @@ class GestureAgent(BaseAgent):
         """
         Receive a GestureMessage, map the gesture label to natural-language
         text, and re-publish a TranscriptionMessage so the full Agent Mesh
-        pipeline processes it (RouterAgent → AccessibilityAgent →
-        TranslationAgent → AccessibilityAgent fan-in).
+        pipeline processes it (RouterAgent → AccessibilityAgent).
 
         This makes gesture input a first-class citizen: it flows through
         exactly the same enrichment pipeline as speech input.

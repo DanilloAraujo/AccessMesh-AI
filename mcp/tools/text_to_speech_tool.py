@@ -4,12 +4,10 @@ MCP Tool: text_to_speech_tool
 Converts text into synthesised speech using Azure Neural TTS.
 
 Primary path:  Azure Speech SDK (azure-cognitiveservices-speech) — provides
-               MP3 audio AND viseme timing events for avatar lip-sync.
-Fallback path: Azure TTS REST API via httpx — audio only, no viseme events.
-               Used automatically when the SDK is unavailable.
+               MP3 audio for browser playback.
+Fallback path: Azure TTS REST API via httpx — used automatically when the
+               SDK is unavailable.
 
-Returns base64-encoded MP3 audio for browser playback plus viseme events
-for the AvatarSignView lip-sync animation.
 Falls back to an empty payload when AZURE_SPEECH_KEY / AZURE_SPEECH_REGION
 are not configured.
 """
@@ -27,18 +25,13 @@ logger = logging.getLogger(__name__)
 class TextToSpeechTool:
     """
     MCP tool that synthesises speech audio from text.
-
-    name        : text_to_speech_tool
-    description : Converts text into synthesised speech (Azure Neural TTS).
-                  Returns base64-encoded MP3 audio + viseme events for avatar
-                  lip-sync animation.
     """
 
     name: str = "text_to_speech_tool"
     description: str = (
         "Synthesises natural-language text into speech audio using Azure "
         "Neural TTS. Returns base64-encoded audio (MP3) ready for browser "
-        "playback and viseme timing events for avatar lip-sync animation."
+        "playback."
     )
     input_schema: Dict[str, Any] = {
         "type": "object",
@@ -85,15 +78,14 @@ class TextToSpeechTool:
         """
         Run the tool and return a result dict compatible with the MCP protocol.
 
-        Tries the Azure Speech SDK first (provides viseme events for lip-sync).
-        Falls back to the REST API when the SDK is unavailable.
+        Tries the Azure Speech SDK first, falls back to the REST API when
+        the SDK is unavailable.
 
         Returns
         -------
         {
             "audio_b64"    : str,   base64-encoded MP3 audio bytes
             "content_type" : str,   "audio/mpeg"
-            "viseme_events": list,  [{offset_ms: float, viseme_id: int}, ...]
             "language"     : str,
             "voice_name"   : str,
             "stub"         : bool   True when credentials are missing

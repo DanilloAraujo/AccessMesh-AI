@@ -16,7 +16,6 @@ from agents.pipeline import AgentMeshPipeline
 from agents.speech_agent import SpeechAgent
 from agents.router_agent import RouterAgent
 from agents.summary_agent import SummaryAgent
-from agents.translation_agent import TranslationAgent
 from shared.config import settings
 from backend.app.core.hub_manager import HubManager
 from backend.app.core.realtime_dispatcher import RealtimeDispatcher
@@ -27,7 +26,6 @@ from services.summarization_service import SummarizationService
 from services.webpubsub_service import WebPubSubService
 from services.cosmos_service import CosmosService
 from services.content_safety_service import ContentSafetyService
-from services.translator_service import TranslatorService
 from services.telemetry_service import TelemetryService
 from services.servicebus_service import ServiceBusService
 
@@ -112,12 +110,6 @@ def create_app() -> FastAPI:
             "enabled" if app.state.content_safety.is_enabled else "disabled (set CONTENT_SAFETY_ENDPOINT + CONTENT_SAFETY_KEY)",
         )
 
-        # ── Azure AI Translator ─────────────────────────────────────────
-        app.state.translator = TranslatorService()
-        logger.info(
-            "[OK] TranslatorService — dedicated translation: %s",
-            "enabled" if app.state.translator.is_enabled else "disabled (set TRANSLATOR_KEY)",
-        )
 
         # ── Gesture + Summarization ────────────────────────────────────
         app.state.gesture = GestureService()
@@ -141,7 +133,6 @@ def create_app() -> FastAPI:
 
         _router_agent      = RouterAgent()
         _access_agent      = AccessibilityAgent()
-        _translation_agent = TranslationAgent()
         _gesture_agent     = GestureAgent()
         _summary_agent     = SummaryAgent()
         _speech_agent      = SpeechAgent(mcp_client=mcp_client)
@@ -149,7 +140,6 @@ def create_app() -> FastAPI:
         # Register agents in the service-discovery registry (for API routes)
         agent_registry.register("router_agent",        _router_agent)
         agent_registry.register("accessibility_agent", _access_agent)
-        agent_registry.register("translation_agent",   _translation_agent)
         agent_registry.register("gesture_agent",       _gesture_agent)
         agent_registry.register("summary_agent",       _summary_agent)
         agent_registry.register("speech_agent",        _speech_agent)
@@ -157,7 +147,7 @@ def create_app() -> FastAPI:
         # Subscribe every agent to the bus according to its declared
         # ``subscribes_to`` list — this is the only wiring needed.
         # No agent holds a reference to any other agent.
-        for _agent in (_router_agent, _access_agent, _translation_agent,
+        for _agent in (_router_agent, _access_agent,
                        _gesture_agent, _summary_agent,
                        _speech_agent):
             _agent.register(agent_bus)
@@ -205,9 +195,7 @@ def create_app() -> FastAPI:
             await app.state.cosmos.close()
         app.state.cosmos          = None
         app.state.content_safety  = None
-        app.state.translator      = None
         app.state.telemetry       = None
-
 
     application = FastAPI(
         title="AccessMesh-AI",

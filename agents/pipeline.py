@@ -47,20 +47,19 @@ class AgentMeshPipeline:
         session_id: str,
         user_id: str,
         language: str = "en-US",
-        target_language: str = "en-US",
     ) -> AccessibleMessage:
         """
         Publish a TranscriptionMessage onto the AsyncAgentBus and collect the
-        terminal AccessibleMessage produced by AccessibilityAgent (fan-in).
+        terminal AccessibleMessage produced by AccessibilityAgent.
 
-        Pipeline: Router → (AccessibilityAgent ‖ TranslationAgent) → fan-in ACCESSIBLE
+        Pipeline: RouterAgent → AccessibilityAgent → ACCESSIBLE
 
         All participants receive text — no TTS, no sign gloss.
         Falls back to a minimal AccessibleMessage on timeout.
         """
         logger.info(
-            "Pipeline.run — session=%s user=%s lang=%s→%s text=%s",
-            session_id, user_id, language, target_language, text[:80],
+            "Pipeline.run — session=%s user=%s lang=%s text=%s",
+            session_id, user_id, language, text[:80],
         )
 
         t0 = time.perf_counter()
@@ -73,7 +72,6 @@ class AgentMeshPipeline:
             detected_language=_LANGUAGE_MAP.get(language),
             metadata={
                 "language": language,
-                "target_language": target_language,
             },
         )
 
@@ -107,10 +105,9 @@ class AgentMeshPipeline:
         accessible: AccessibleMessage = terminal  # type: ignore[assignment]
 
         logger.info(
-            "Pipeline done — session=%s elapsed_ms=%.0f features=%s translated=%s",
+            "Pipeline done — session=%s elapsed_ms=%.0f features=%s",
             session_id,
             elapsed_ms,
             [f.value if hasattr(f, "value") else f for f in accessible.features_applied],
-            "yes" if accessible.metadata.get("translated_text") else "no",
         )
         return accessible

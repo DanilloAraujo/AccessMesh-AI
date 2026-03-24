@@ -91,14 +91,7 @@ const ChatPanel: React.FC = () => {
                   : 'bg-white/10 border border-white/10'
                   }`}
               >
-                {msg.translated_content ? (
-                  <>
-                    <span>{msg.translated_content}</span>
-                    {msg.content !== msg.translated_content && (
-                      <span className="block text-[10px] text-text-muted mt-1 italic">{msg.content}</span>
-                    )}
-                  </>
-                ) : msg.content}
+                {msg.content}
               </div>
             </motion.div>
           ))}

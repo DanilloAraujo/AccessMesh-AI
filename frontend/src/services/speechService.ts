@@ -23,13 +23,12 @@ export interface VoiceResponse {
     text: string;
     source: string;
     features_applied: string[];
-    translated_content?: string;
 }
 
 /**
  * Upload a raw audio blob (WebM/Opus from MediaRecorder) to the backend.
  * The backend transcribes it via the MCP speech_to_text_tool and runs the
- * full pipeline (RouterAgent → AccessibilityAgent ‖ TranslationAgent → ACCESSIBLE),
+ * full pipeline (RouterAgent → AccessibilityAgent → ACCESSIBLE),
  * broadcasting the result to all session participants.
  */
 export async function recognizeAudio(
@@ -37,14 +36,12 @@ export async function recognizeAudio(
     sessionId: string,
     userId: string,
     language = 'en-US',
-    targetLanguage = 'en-US',
 ): Promise<VoiceResponse> {
     const form = new FormData();
     form.append('audio', audioBlob, 'recording.webm');
     form.append('session_id', sessionId);
     form.append('user_id', userId);
     form.append('language', language);
-    form.append('target_language', targetLanguage);
 
     const response = await fetch(`${BASE_URL}/speech/recognize`, {
         method: 'POST',

@@ -4,8 +4,7 @@ Router Agent — decides which downstream agents process each transcription.
 Role (Agent Mesh): router_agent
 
 Routing policy (deterministic, no LLM overhead):
-  - Non-empty text  → activate both: accessibility_agent, translation_agent
-  - Empty / command → accessibility_agent only (subtitles, no translation)
+  - All messages → accessibility_agent (subtitles, sign-language accessibilty)
 
 Input : TranscriptionMessage
 Output: RoutedMessage
@@ -25,8 +24,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_ALL_AGENTS: List[str] = ["accessibility_agent", "translation_agent"]
-_ACCESSIBILITY_ONLY: List[str] = ["accessibility_agent"]
+_ALL_AGENTS: List[str] = ["accessibility_agent"]
 
 
 class RouterAgent(BaseAgent):
@@ -43,13 +41,9 @@ class RouterAgent(BaseAgent):
     subscribes_to: ClassVar[List[MessageType]] = [MessageType.TRANSCRIPTION]
 
     async def route(self, msg: TranscriptionMessage) -> RoutedMessage:
-        # Route to both agents for natural-language text; accessibility-only
-        # for empty messages or pure command tokens (digits/punctuation only).
-        text = msg.text.strip()
-        if text and not text.replace(" ", "").isdigit() and any(c.isalpha() for c in text):
-            target_agents = _ALL_AGENTS
-        else:
-            target_agents = _ACCESSIBILITY_ONLY
+        # All messages flow through the accessibility agent for subtitle and
+        # sign-language enrichment. No spoken→spoken translation path.
+        target_agents = _ALL_AGENTS
 
         routed = RoutedMessage(
             session_id=msg.session_id,
@@ -60,7 +54,7 @@ class RouterAgent(BaseAgent):
         )
 
         logger.info(
-            "RouterAgent: session=%s text_len=%d → agents=%s",
+            "RouterAgent: session=%s text_len=%d → %s",
             msg.session_id, len(msg.text), target_agents,
         )
         return routed

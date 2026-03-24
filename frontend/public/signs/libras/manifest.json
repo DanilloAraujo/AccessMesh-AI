@@ -1,7 +1,7 @@
 {
     "version": "1.0.0",
     "language": "libras",
-    "description": "LIBRAS (Língua Brasileira de Sinais) video clip manifest for the AccessMesh-AI avatar renderer.",
+    "description": "LIBRAS (Língua Brasileira de Sinais) video clip manifest for AccessMesh-AI.",
     "clips": [],
     "usage": {
         "format": "WebM VP9 (preferred) or MP4 H.264",
@@ -10,5 +10,5 @@
         "resolution": "320x240 recommended",
         "fps": 25
     },
-    "note": "Add .webm sign-language clips to this directory named after their LIBRAS gloss in lowercase. Update the 'clips' array with each filename you add so the avatar renderer can pre-check availability and avoid unnecessary 404 requests."
+    "note": "Add .webm sign-language clips to this directory named after their LIBRAS gloss in lowercase. Update the 'clips' array with each filename you add."
 }

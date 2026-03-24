@@ -80,12 +80,6 @@ const translations: Record<string, Record<string, string>> = {
         en: 'Type messages during the meeting',
         pt: 'Digite mensagens durante a reunião',
     },
-    'mode.libras.send': { en: 'Signs', pt: 'Sinaliza' },
-    'mode.libras.receive': { en: 'Watches avatar', pt: 'Vê avatar' },
-    'mode.libras.description': {
-        en: 'Use webcam to sign in Brazilian Sign Language',
-        pt: 'Use a webcam para sinalizar em Libras',
-    },
 
     // --- Language options ---
     'lang.en': { en: 'English (US)', pt: 'Inglês (EUA)' },
@@ -127,9 +121,9 @@ const translations: Record<string, Record<string, string>> = {
     'mode.text.sendFull': { en: 'Type messages', pt: 'Digite mensagens' },
     'mode.text.receiveFull': { en: 'Receive in chat panel', pt: 'Receba no painel de chat' },
     'mode.libras.sendFull': { en: 'Camera captures your signs', pt: 'Câmera captura seus gestos' },
-    'mode.libras.receiveFull': { en: 'Avatar interprets the signs', pt: 'Avatar interpreta os sinais' },
+    'mode.libras.receiveFull': { en: 'Text in live transcription', pt: 'Texto em transcrição ao vivo' },
     'mode.voice.sendFull': { en: 'Microphone captures your voice', pt: 'Microfone captura sua fala' },
-    'mode.voice.receiveFull': { en: 'Audio played via avatar', pt: 'Áudio reproduzido pelo avatar' },
+    'mode.voice.receiveFull': { en: 'Text in live transcription', pt: 'Texto em transcrição ao vivo' },
 
     // --- Meeting room ---
     'meeting.consentTitle': {
@@ -246,16 +240,6 @@ const translations: Record<string, Record<string, string>> = {
     'mic.stopRecording': { en: 'Stop recording', pt: 'Parar gravação' },
     'mic.recording': { en: 'Recording…', pt: 'Gravando…' },
 
-    // --- Avatar / Sign Language ---
-    'avatar.title': { en: 'Sign Language Avatar', pt: 'Avatar de Linguagem de Sinais' },
-    'avatar.idle': {
-        en: 'Avatar ready — waiting for signs…',
-        pt: 'Avatar pronto — aguardando sinais…',
-    },
-    'avatar.signing': { en: 'Signing: ', pt: 'Sinalizando: ' },
-    'avatar.provider.azure': { en: 'Azure Avatar', pt: 'Avatar Azure' },
-    'avatar.provider.local': { en: 'Local GIF', pt: 'GIF Local' },
-
     // --- Gesture camera ---
     'gesture.title': { en: 'Sign Camera', pt: 'Câmera de Sinais' },
     'gesture.waiting': {
@@ -348,10 +332,6 @@ const translations: Record<string, Record<string, string>> = {
     // Additional mic keys
     'mic.error': { en: 'Error — try again', pt: 'Erro — tente novamente' },
     'mic.startVoice': { en: 'Start voice input', pt: 'Iniciar entrada de voz' },
-
-    // Additional avatar keys
-    'avatar.provider.videoTitle': { en: 'ASL video clips', pt: 'Clipes de vídeo ASL' },
-    'avatar.provider.svgTitle': { en: 'SVG stick-figure', pt: 'Figura SVG' },
 
     // --- Error boundary ---
     'errorBoundary.title': { en: 'Something went wrong', pt: 'Algo deu errado' },

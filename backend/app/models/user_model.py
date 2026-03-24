@@ -29,7 +29,7 @@ class AccessibilityPreferences(BaseModel):
 
     sign_language: bool = Field(
         default=False,
-        description="Enable real-time sign-language avatar synthesis.",
+        description="Enable real-time sign-language.",
     )
     subtitles: bool = Field(
         default=True,

@@ -18,7 +18,6 @@ class MessageType(str, Enum):
     GESTURE           = "gesture"
     ROUTED            = "routed"
     ACCESSIBLE        = "accessible"
-    TRANSLATED        = "translated"
     SUMMARY           = "summary"
     CHAT              = "chat"
     SYSTEM            = "system"
@@ -35,7 +34,7 @@ class AccessibilityFeature(str, Enum):
 
 
 class Language(str, Enum):
-    """Supported languages by the translation_agent."""
+    """Supported languages for speech and accessibility features."""
     PT_BR = "pt-BR"
     EN_US = "en-US"
     ES    = "es"
@@ -125,7 +124,7 @@ class RoutedMessage(BaseMessage):
     text: str = Field(..., description="Text to process.")
     target_agents: List[str] = Field(
         default_factory=list,
-        description="List of target agents (e.g., ['accessibility_agent', 'translation_agent']).",
+        description="List of target agents (e.g., ['accessibility_agent']).",
     )
 
 
@@ -151,16 +150,6 @@ class AccessibleMessage(BaseMessage):
         default=None,
         description="Base64-encoded MP3 from Azure Neural TTS for voice-mode playback.",
     )
-
-
-class TranslatedMessage(BaseMessage):
-    """Text translated by the translation_agent."""
-
-    message_type: MessageType = MessageType.TRANSLATED
-    original_text: str = Field(..., description="Original text before translation.")
-    translated_text: str = Field(..., description="Translated text.")
-    source_language: Language = Field(..., description="Source language.")
-    target_language: Language = Field(..., description="Target language.")
 
 
 class SystemMessage(BaseMessage):
@@ -233,7 +222,6 @@ AnyMessage = (
     | GestureMessage
     | RoutedMessage
     | AccessibleMessage
-    | TranslatedMessage
     | MeetingSummaryMessage
     | SystemMessage
     | ErrorMessage
@@ -245,7 +233,6 @@ _MESSAGE_CLASS_MAP: Dict[str, type] = {
     MessageType.GESTURE:      GestureMessage,
     MessageType.ROUTED:       RoutedMessage,
     MessageType.ACCESSIBLE:   AccessibleMessage,
-    MessageType.TRANSLATED:   TranslatedMessage,
     MessageType.SUMMARY:      MeetingSummaryMessage,
     MessageType.SYSTEM:       SystemMessage,
     MessageType.ERROR:        ErrorMessage,

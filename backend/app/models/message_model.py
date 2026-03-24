@@ -21,7 +21,6 @@ from shared.message_schema import (  # noqa: F401
     RoutedMessage,
     SystemMessage,
     TranscriptionMessage,
-    TranslatedMessage,
 )
 
 from pydantic import Field

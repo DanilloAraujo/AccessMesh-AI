@@ -18,8 +18,6 @@ export interface ChatMessage {
   source?: 'text' | 'voice' | 'gesture';
   /** Accessibility features applied by the accessibility_agent */
   features_applied?: string[];
-  /** Translated text when target language differs from source */
-  translated_content?: string;
   /** True while the pipeline is still processing — renders as a typing indicator */
   pending?: boolean;
   /** STT transcription confidence score (0–1) */
@@ -179,7 +177,6 @@ class WebSocketService {
         timestamp: m.stored_at ?? m.timestamp ?? new Date().toISOString(),
         source: (m.source as ChatMessage['source']) ?? 'text',
         features_applied: m.features_applied,
-        translated_content: m.translated_content,
         confidence: m.confidence,
       }));
       for (const msg of msgs) {
@@ -217,11 +214,11 @@ class WebSocketService {
 
   /**
    * Posts plain-text chat to the backend chat pipeline.
-   * The pipeline runs router → accessibility → translation → avatar and
-   * broadcasts the enriched result (with sign_gloss) to all participants.
+   * The pipeline runs router → accessibility and broadcasts the enriched
+   * result (with sign_gloss) to all participants.
    */
   async sendChatMessage(text: string, targetLanguage = 'en-US'): Promise<ChatMessage | null> {
-    console.log('[websocketService] sendChatMessage → POST /chat/send — text=%s target=%s', text.substring(0, 80), targetLanguage);
+    console.log('[websocketService] sendChatMessage → POST /chat/send — text=%s', text.substring(0, 80));
     try {
       const response = await fetch(`${BASE_URL}/chat/send`, {
         method: 'POST',
@@ -232,7 +229,6 @@ class WebSocketService {
           user_id: this.userId,
           display_name: this.displayName,
           language: targetLanguage,
-          target_language: targetLanguage,
         }),
       });
 
@@ -251,7 +247,6 @@ class WebSocketService {
         timestamp: new Date().toISOString(),
         source: 'text',
         features_applied: result.features_applied ?? [],
-        translated_content: result.translated_content ?? undefined,
         confidence: result.confidence ?? undefined,
       };
       // Broadcast the enriched message to all other group members via WebSocket.
@@ -265,14 +260,14 @@ class WebSocketService {
 
   /**
    * Posts transcribed text to the backend speech pipeline.
-   * The pipeline runs router → accessibility → translation → avatar
-   * and broadcasts the result to ALL session participants via Web PubSub.
+   * The pipeline runs router → accessibility and broadcasts the result
+   * to ALL session participants via Web PubSub.
    *
    * Returns a local ChatMessage for optimistic UI update (the sender
    * is excluded from the WebPubSub broadcast echo).
    */
   async processSpeech(text: string, language = 'en-US', targetLanguage = 'en-US'): Promise<ChatMessage | null> {
-    console.log('[websocketService] processSpeech → POST /speech/voice — text=%s lang=%s target=%s', text.substring(0, 80), language, targetLanguage);
+    console.log('[websocketService] processSpeech → POST /speech/voice — text=%s lang=%s', text.substring(0, 80), language);
     try {
       const response = await fetch(`${BASE_URL}/speech/voice`, {
         method: 'POST',
@@ -283,7 +278,6 @@ class WebSocketService {
           user_id: this.userId,
           display_name: this.displayName,
           language,
-          target_language: targetLanguage,
         }),
       });
 
@@ -306,7 +300,6 @@ class WebSocketService {
         timestamp: new Date().toISOString(),
         source: 'voice',
         features_applied: result.features_applied ?? [],
-        translated_content: result.translated_content ?? undefined,
         confidence: result.confidence ?? undefined,
       };
       // Broadcast the enriched voice message to all other group members.
@@ -342,7 +335,6 @@ class WebSocketService {
           user_id: this.userId,
           display_name: this.displayName,
           language,
-          target_language: targetLanguage,
         }),
       });
       if (!response.ok) {
@@ -364,7 +356,6 @@ class WebSocketService {
         timestamp: new Date().toISOString(),
         source: sourceMap[inputType] ?? 'text',
         features_applied: result.features_applied ?? [],
-        translated_content: result.translated_content ?? undefined,
         confidence: result.confidence ?? undefined,
       };
       this._broadcastToGroup(localMsg);

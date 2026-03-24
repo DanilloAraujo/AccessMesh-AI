@@ -28,7 +28,7 @@ from mcp.tools import (
     MeetingSummaryTool,
     SpeechToTextTool,
     TextToSpeechTool,
-    TextTranslationTool,
+    SignToTextTool,
 )
 
 __all__ = [
@@ -37,7 +37,7 @@ __all__ = [
     "SpeechToTextTool",
     "GestureRecognitionTool",
     "TextToSpeechTool",
-    "TextTranslationTool",
+    "SignToTextTool",
     "MeetingSummaryTool",
     "LLMClassifyTool",
 ]

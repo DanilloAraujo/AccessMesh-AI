@@ -36,8 +36,8 @@ _WatchKey = Tuple[MessageType, str]
 # SERVICE BUS SUBSCRIPTION AUDIT
 # ──────────────────────────────────────────────────────────────────
 # This backend forwards ONLY the 4 terminal event types below to the
-# Azure Service Bus topic.  Internal pipeline steps (ROUTED, ACCESSIBLE,
-# TRANSLATED) are dispatched entirely in-process for performance.
+# Azure Service Bus topic.  Internal pipeline steps (ROUTED, ACCESSIBLE)
+# are dispatched entirely in-process for performance.
 #
 # IMPORTANT: If Azure is configured with more than these 4 subscription
 # filters, the extra subscriptions will silently accumulate messages that
@@ -47,7 +47,7 @@ _WatchKey = Tuple[MessageType, str]
 #   3. sub-summary         → filter: message_type = 'SUMMARY'
 #   4. sub-error           → filter: message_type = 'ERROR'
 #
-# Any additional subscriptions (e.g. ROUTED, ACCESSIBLE, TRANSLATED,
+# Any additional subscriptions (e.g. ROUTED, ACCESSIBLE,
 # GESTURE_RESULT, AUDIO_CHUNK, etc.) are NOT backed by a receiver in this
 # service and should be removed from Azure to avoid unbounded message buildup.
 # ──────────────────────────────────────────────────────────────────
@@ -122,14 +122,7 @@ class AsyncAgentBus:
                 "[AgentBus] Service Bus configured (single-instance mode) — "
                 "dispatching in-process, forwarding events to SB topic for external consumers."
             )
-            logger.warning(
-                "[AgentBus] SERVICE BUS SUBSCRIPTION CHECK: this service only forwards "
-                "%d event types (%s) to the SB topic. If Azure is configured with more "
-                "subscriptions, the extra ones will accumulate messages without any consumer. "
-                "Remove unused subscriptions in Azure Portal to avoid unbounded message buildup.",
-                len(_SB_FORWARD_TYPES),
-                ", ".join(sorted(_SB_FORWARD_TYPES)),
-            )
+     
             # Pre-warm the AMQP sender so the first real message send doesn't
             # run into a cold TCP+TLS+AMQP handshake inside the 0.8 s timeout.
             await self._sb_service.initialize()

@@ -79,7 +79,6 @@ class HubMessageRequest(BaseModel):
     session_id: str = Field(..., max_length=128)
     user_id: str    = Field(..., max_length=128)
     language: str   = Field(default="en-US", max_length=10)
-    target_language: str = Field(default="en-US", max_length=10)
     display_name: str    = Field(default="", max_length=256)
 
 
@@ -89,7 +88,6 @@ class HubMessageResponse(BaseModel):
     text: str
     features_applied: list[str]
     sign_gloss: Optional[list[dict]] = None
-    translated_content: Optional[str] = None
     audio_b64: Optional[str] = None
 
 
@@ -127,7 +125,6 @@ async def hub_message(
                 session_id=body.session_id,
                 user_id=body.user_id,
                 language=body.language,
-                target_language=body.target_language,
                 display_name=body.display_name,
             )
         elif body.input_type == "gesture":
@@ -136,7 +133,6 @@ async def hub_message(
                 session_id=body.session_id,
                 user_id=body.user_id,
                 language=body.language,
-                target_language=body.target_language,
                 display_name=body.display_name,
             )
         else:  # "text"
@@ -145,7 +141,7 @@ async def hub_message(
                 session_id=body.session_id,
                 user_id=body.user_id,
                 display_name=body.display_name,
-                target_language=body.target_language,
+                language=body.language,
             )
     except Exception as exc:
         logger.exception("hub_message dispatch failed — input_type=%s", body.input_type)
@@ -161,6 +157,5 @@ async def hub_message(
         text=payload.get("content", body.content),
         features_applied=payload.get("features_applied", []),
         sign_gloss=payload.get("sign_gloss") or None,
-        translated_content=payload.get("translated_content"),
         audio_b64=payload.get("audio_b64"),
     )

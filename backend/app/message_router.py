@@ -54,7 +54,6 @@ class MessageRouter:
         session_id: str,
         user_id: str,
         language: str = "en-US",
-        target_language: str = "en-US",
         display_name: str = "",
     ) -> Dict[str, Any]:
         """
@@ -63,8 +62,8 @@ class MessageRouter:
         Returns the enriched payload dict.
         """
         logger.info(
-            "MessageRouter.route_voice — session=%s user=%s lang=%s target=%s text=%s",
-            session_id, user_id, language, target_language, text[:80],
+            "MessageRouter.route_voice — session=%s user=%s lang=%s text=%s",
+            session_id, user_id, language, text[:80],
         )
         await self._screen(text)
         accessible = await self._pipeline.run(
@@ -72,7 +71,6 @@ class MessageRouter:
             session_id=session_id,
             user_id=user_id,
             language=language,
-            target_language=target_language,
         )
         payload = self._build_payload(accessible, source="voice")
         if display_name:
@@ -95,7 +93,6 @@ class MessageRouter:
         session_id: str,
         user_id: str,
         language: str = "en-US",
-        target_language: str = "en-US",
         display_name: str = "",
     ) -> Dict[str, Any]:
         """
@@ -124,7 +121,6 @@ class MessageRouter:
             session_id=session_id,
             user_id=user_id,
             language=language,
-            target_language=target_language,
         )
         payload = self._build_payload(accessible, source="gesture")
         if display_name:
@@ -142,7 +138,6 @@ class MessageRouter:
         user_id: str,
         display_name: str = "",
         language: str = "en-US",
-        target_language: str = "en-US",
     ) -> Dict[str, Any]:
         """
         Route a chat message through the AgentMeshPipeline for full accessibility enrichment.
@@ -154,7 +149,6 @@ class MessageRouter:
             session_id=session_id,
             user_id=user_id,
             language=language,
-            target_language=target_language,
         )
         payload = self._build_payload(accessible, source="text")
         if display_name:
@@ -170,14 +164,12 @@ class MessageRouter:
     def _build_payload(accessible: Any, source: str) -> Dict[str, Any]:
         """Convert an AccessibleMessage (agent output) to a broadcast dict."""
         metadata: Dict[str, Any] = getattr(accessible, "metadata", None) or {}
-        translated_text = metadata.get("translated_text")
         return {
             "id":                 accessible.message_id,
             "type":               "message",
             "source":             source,
             "from":               accessible.sender_id,
             "content":            accessible.text,
-            "translated_content": translated_text,
             "features_applied":   [
                 f.value if hasattr(f, "value") else str(f)
                 for f in (getattr(accessible, "features_applied", None) or [])

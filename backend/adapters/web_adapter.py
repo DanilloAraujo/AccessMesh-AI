@@ -23,7 +23,6 @@ Usage (from a route or service)
             session_id="abc",
             user_id="user-1",
             language="pt-BR",
-            target_language="en-US",
             display_name="Maria",
             communication_mode="text",
         ),
@@ -72,6 +71,5 @@ class WebAdapter(ChannelAdapter):
             session_id=context.session_id,
             user_id=context.user_id,
             language=payload.get("language", context.language),
-            target_language=payload.get("target_language", context.target_language),
             display_name=payload.get("display_name", context.display_name),
         )

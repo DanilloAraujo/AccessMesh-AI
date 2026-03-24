@@ -58,7 +58,7 @@ async def _dispatch_gesture(
     Publish a GestureMessage onto the Agent Mesh bus and collect the resulting
     AccessibleMessage.  Returns None on timeout.
     """
-    meta: Dict[str, Any] = {"language": language, "target_language": language}
+    meta: Dict[str, Any] = {"language": language}
     if landmarks:
         meta["landmarks"] = landmarks
 
@@ -97,7 +97,6 @@ class GestureProcessResponse(BaseModel):
     text: str
     source: str
     features_applied: List[str]
-    translated_content: Optional[str] = None
 
 
 class LandmarksRequest(BaseModel):
@@ -124,7 +123,6 @@ class GestureFrameResponse(BaseModel):
     confidence: float
     source: str
     features_applied: List[str]
-    translated_content: Optional[str] = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -143,8 +141,7 @@ async def process_gesture(
     """
     Publishes a GestureMessage onto the Agent Mesh bus.  The GestureAgent
     recognises the label to text, re-publishes as a TranscriptionMessage that
-    flows through the full pipeline (Router -> Accessibility || Translation ->
-    fan-in ACCESSIBLE).
+    flows through the full pipeline (Router → Accessibility → ACCESSIBLE).
     """
     if not body.gesture_label.strip():
         raise HTTPException(status_code=422, detail="gesture_label cannot be empty.")
@@ -166,7 +163,6 @@ async def process_gesture(
                 features_applied=[],
             )
         content = terminal.text or body.gesture_label
-        translated = terminal.metadata.get("translated_text") if terminal.metadata else None
         await _save_message(request, body.session_id, {
             "id": terminal.message_id,
             "content": content,
@@ -181,7 +177,6 @@ async def process_gesture(
                 f.value if hasattr(f, "value") else f
                 for f in terminal.features_applied
             ],
-            translated_content=translated,
         )
     except Exception as exc:
         logger.exception("Error processing gesture input")
@@ -250,7 +245,6 @@ async def process_landmarks(
             features_applied=[],
         )
     recognized_text = terminal.text or text
-    translated = terminal.metadata.get("translated_text") if terminal.metadata else None
     await _save_message(request, body.session_id, {
         "id": terminal.message_id,
         "content": recognized_text,
@@ -265,7 +259,6 @@ async def process_landmarks(
             f.value if hasattr(f, "value") else f
             for f in terminal.features_applied
         ],
-        translated_content=translated,
     )
 
 
@@ -332,7 +325,6 @@ async def process_frame(
             features_applied=[],
         )
     recognized_text = terminal.text or text
-    translated = terminal.metadata.get("translated_text") if terminal.metadata else None
     await _save_message(request, body.session_id, {
         "id": terminal.message_id,
         "content": recognized_text,
@@ -349,5 +341,4 @@ async def process_frame(
             f.value if hasattr(f, "value") else f
             for f in terminal.features_applied
         ],
-        translated_content=translated,
     )

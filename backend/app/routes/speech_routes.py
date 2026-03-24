@@ -69,7 +69,6 @@ class VoiceRequest(BaseModel):
     user_id: str     = Field(..., max_length=128,   description="Participant user_id.")
     display_name: str = Field(default="", max_length=128, description="Sender display name shown in conversation.")
     language: str    = Field(default="en-US", max_length=10, description="BCP-47 language tag.")
-    target_language: str = Field(default="en-US", max_length=10, description="BCP-47 target language for translation.")
 
 
 class VoiceResponse(BaseModel):
@@ -77,7 +76,6 @@ class VoiceResponse(BaseModel):
     text: str
     source: str
     features_applied: List[str]
-    translated_content: Optional[str] = None
 
 
 class SpeechTokenResponse(BaseModel):
@@ -106,15 +104,15 @@ async def process_voice(
 ) -> VoiceResponse:
     """
     Receives browser-transcribed text and runs it through:
-      RouterAgent → AccessibilityAgent ‖ TranslationAgent → fan-in ACCESSIBLE
+      RouterAgent → AccessibilityAgent → ACCESSIBLE
     Then broadcasts the result to all session participants.
     """
     if not body.text.strip():
         raise HTTPException(status_code=422, detail="text cannot be empty.")
 
     logger.info(
-        "[/speech/voice] → session=%s user=%s lang=%s target=%s text=%s",
-        body.session_id, body.user_id, body.language, body.target_language, body.text[:80],
+        "[/speech/voice] → session=%s user=%s lang=%s text=%s",
+        body.session_id, body.user_id, body.language, body.text[:80],
     )
     try:
         payload = await msg_router.route_voice(
@@ -122,7 +120,6 @@ async def process_voice(
             session_id=body.session_id,
             user_id=body.user_id,
             language=body.language,
-            target_language=body.target_language,
             display_name=body.display_name,
         )
         logger.info(
@@ -136,7 +133,6 @@ async def process_voice(
             text=payload.get("content", body.text),
             source="voice",
             features_applied=payload.get("features_applied", []),
-            translated_content=payload.get("translated_content"),
         )
     except Exception as exc:
         logger.exception("Error processing voice input")
@@ -155,7 +151,6 @@ async def recognize_audio(
     session_id: str  = Form(..., max_length=128),
     user_id: str     = Form(..., max_length=128),
     language: str    = Form(default="en-US", max_length=10),
-    target_language: str = Form(default="en-US", max_length=10),
     msg_router: MessageRouter = Depends(_get_router),
     _claims: dict = Depends(require_auth),
 ) -> VoiceResponse:
@@ -166,7 +161,7 @@ async def recognize_audio(
       2. Base64-encode and pass to the MCP ``speech_to_text_tool`` for
          transcription (Azure Cognitive Services or stub).
       3. Feed the recognised text into the normal voice pipeline
-         (RouterAgent → AccessibilityAgent ‖ TranslationAgent → fan-in ACCESSIBLE).
+         (RouterAgent → AccessibilityAgent → ACCESSIBLE).
       4. The result is broadcast to all session participants.
 
     The browser never needs the Azure Speech SDK.
@@ -178,8 +173,8 @@ async def recognize_audio(
         raise HTTPException(status_code=413, detail="Audio exceeds 10 MB limit.")
 
     logger.info(
-        "[/speech/recognize] → session=%s user=%s lang=%s target=%s audio_bytes=%d",
-        session_id, user_id, language, target_language, len(audio_bytes),
+        "[/speech/recognize] → session=%s user=%s lang=%s audio_bytes=%d",
+        session_id, user_id, language, len(audio_bytes),
     )
 
     # Step 1 – transcribe via MCP tool
@@ -218,7 +213,6 @@ async def recognize_audio(
             session_id=session_id,
             user_id=user_id,
             language=language,
-            target_language=target_language,
         )
         logger.info(
             "[/speech/recognize] ← id=%s features=%s",
@@ -231,7 +225,6 @@ async def recognize_audio(
             text=payload.get("content", recognised_text),
             source="voice",
             features_applied=payload.get("features_applied", []),
-            translated_content=payload.get("translated_content"),
         )
     except Exception as exc:
         logger.exception("Error in voice pipeline after transcription")
