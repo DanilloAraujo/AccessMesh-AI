@@ -67,7 +67,7 @@ const translations: Record<string, Record<string, string>> = {
     // --- Communication modes ---
     'mode.voice': { en: 'Voice', pt: 'Voz' },
     'mode.text': { en: 'Text', pt: 'Texto' },
-    'mode.libras': { en: 'Libras', pt: 'Libras' },
+    'mode.libras': { en: 'ASL', pt: 'Libras' },
     'mode.voice.send': { en: 'Speaks', pt: 'Fala' },
     'mode.voice.receive': { en: 'Listens', pt: 'Ouve' },
     'mode.voice.description': {
@@ -164,7 +164,7 @@ const translations: Record<string, Record<string, string>> = {
     'meeting.genSummary': { en: 'Generate Minutes', pt: 'Gerar Ata' },
     'meeting.genSummaryLabel': { en: 'Generate Meeting Minutes', pt: 'Gerar Ata da Reunião' },
     'meeting.copyLink': { en: 'Copy room link', pt: 'Copiar link da sala' },
-    'meeting.librasModeTitle': { en: 'Libras Mode', pt: 'Modo Libras' },
+    'meeting.librasModeTitle': { en: 'ASL Mode', pt: 'Modo Libras' },
     'meeting.librasModeDesc': { en: 'Use the Gesture Camera on the side to capture and send your signs.', pt: 'Use a Gesture Camera ao lado para capturar e enviar seus sinais.' },
     'meeting.textModeTitle': { en: 'Text Mode', pt: 'Modo Texto' },
     'meeting.textModeDesc': { en: 'Use the side panel to send and receive messages.', pt: 'Use o painel lateral para enviar e receber mensagens.' },
@@ -178,7 +178,7 @@ const translations: Record<string, Record<string, string>> = {
     // Consent modal (camera / mic permission)
     'consent.camera.title': { en: 'Camera Permission', pt: 'Permissão de Câmera' },
     'consent.camera.desc': { en: 'AccessMesh AI needs camera access to:', pt: 'A AccessMesh-AI precisa de acesso à sua câmera para:' },
-    'consent.camera.item1': { en: 'Capture Libras signs in real time.', pt: 'Capturar gestos de Libras em tempo real.' },
+    'consent.camera.item1': { en: 'Capture ASL signs in real time.', pt: 'Capturar gestos de Libras em tempo real.' },
     'consent.camera.item2': { en: 'Recognize signs and convert them to text for other participants.', pt: 'Reconhecer sinais e convertê-los em texto para os demais participantes.' },
     'consent.camera.btn': { en: 'Allow Camera', pt: 'Permitir Câmera' },
     'consent.camera.btnAria': { en: 'Allow camera access', pt: 'Permitir acesso à câmera' },

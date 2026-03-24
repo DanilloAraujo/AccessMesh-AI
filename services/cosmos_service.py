@@ -74,9 +74,12 @@ class CosmosService:
                 id=self._config.container_sessions,
                 partition_key=PartitionKey(path="/session_id"),
             )
+            # Messages are retained for 24 hours then auto-deleted by Cosmos TTL.
+            # This satisfies data minimization requirements (Responsible AI / GDPR).
             self._messages_container = await db.create_container_if_not_exists(
                 id=self._config.container_messages,
                 partition_key=PartitionKey(path="/session_id"),
+                default_ttl=24 * 3600,  # 24 hours in seconds
             )
             self._users_container = await db.create_container_if_not_exists(
                 id=self._config.container_users,

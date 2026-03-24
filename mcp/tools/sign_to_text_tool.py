@@ -1,5 +1,5 @@
 """
-MCP Tool: sign_adaptation_tool
+MCP Tool: sign_to_text_tool
 
 Adapts spoken-language text into sign-language grammatical structure
 (LIBRAS / ASL) using Azure OpenAI GPT-4o, enabling bidirectional
@@ -33,12 +33,12 @@ class SignToTextTool:
     MCP tool that adapts spoken-language text for sign-language delivery
     using Azure OpenAI GPT-4o.
 
-    name        : sign_adaptation_tool
+    name        : sign_to_text_tool
     description : Adapts text into sign-language grammatical structure (LIBRAS/ASL)
                   via Azure OpenAI GPT-4o.
     """
 
-    name: str = "sign_adaptation_tool"
+    name: str = "sign_to_text_tool"
     description: str = (
         "Adapts spoken-language text into sign-language grammatical structure "
         "(LIBRAS / ASL) using Azure OpenAI GPT-4o. Rewrites text with "
@@ -59,7 +59,7 @@ class SignToTextTool:
             "sign_language": {
                 "type": "string",
                 "description": "Sign language for adaptation: 'libras' or 'asl'.",
-                "default": "libras",
+                "default": "asl",
             },
         },
     }
@@ -72,7 +72,7 @@ class SignToTextTool:
     def _adapt_for_sign(self, text: str, sign_language: str) -> str:
         if not self._openai.is_enabled:
             raise RuntimeError(
-                "SignAdaptationTool: Azure OpenAI not configured — "
+                "SignToTextTool: Azure OpenAI not configured — "
                 "set AZURE_OPENAI_KEY and AZURE_OPENAI_ENDPOINT for sign-language adaptation."
             )
         lang_name = _SIGN_LANG_NAMES.get(sign_language, sign_language.upper())
@@ -94,7 +94,7 @@ class SignToTextTool:
         if adapted:
             return adapted
         raise RuntimeError(
-            "SignAdaptationTool: Azure OpenAI returned empty response for sign-language adaptation."
+            "SignToTextTool: Azure OpenAI returned empty response for sign-language adaptation."
         )
 
     # ── MCP entry point ───────────────────────────────────────────────
@@ -103,7 +103,7 @@ class SignToTextTool:
         self,
         text: str,
         action: str,
-        sign_language: str = "libras",
+        sign_language: str = "asl",
     ) -> Dict[str, Any]:
         """
         Execute the sign-language adaptation.
@@ -118,9 +118,5 @@ class SignToTextTool:
             return {"adapted_text": adapted, "sign_language": sign_language}
 
         raise ValueError(
-            f"SignAdaptationTool: unknown action '{action}'. Expected 'adapt_for_sign'."
+            f"SignToTextTool: unknown action '{action}'. Expected 'adapt_for_sign'."
         )
-
-
-# Backwards-compatible alias so any existing call-sites using the old class name still work.
-TextTranslationTool = SignToTextTool

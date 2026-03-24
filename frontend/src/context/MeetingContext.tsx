@@ -50,6 +50,9 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
     const setTargetLanguage = (lang: string) => {
         localStorage.setItem('preferredLanguage', lang);
         sessionStorage.setItem('targetLanguage', lang);
+        // Also sync 'language' key so useSpeechRecognition picks up the change
+        // immediately on the next MediaRecorder chunk and when native recognition restarts.
+        sessionStorage.setItem('language', lang);
         _setTargetLanguage(lang);
         notifyLanguageChange();
     };
@@ -67,6 +70,7 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
     const { startListening, stopListening, recognitionState, onTranscript } = useSpeechRecognition({
         sessionId,
         userId: user?.userId ?? userId,
+        targetLanguage,
         processSpeech,
     });
 

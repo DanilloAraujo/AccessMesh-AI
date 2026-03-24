@@ -35,28 +35,34 @@ _WatchKey = Tuple[MessageType, str]
 # ──────────────────────────────────────────────────────────────────
 # SERVICE BUS SUBSCRIPTION AUDIT
 # ──────────────────────────────────────────────────────────────────
-# This backend forwards ONLY the 4 terminal event types below to the
-# Azure Service Bus topic.  Internal pipeline steps (ROUTED, ACCESSIBLE)
-# are dispatched entirely in-process for performance.
+# Forward types: events copied to the Azure SB topic for external
+# consumers AND for triggering cross-instance workers.
 #
-# IMPORTANT: If Azure is configured with more than these 4 subscription
-# filters, the extra subscriptions will silently accumulate messages that
-# are NEVER consumed by this service.  Required Azure SB subscriptions:
-#   1. sub-transcription   → filter: message_type = 'TRANSCRIPTION'
-#   2. sub-accessible      → filter: message_type = 'ACCESSIBLE'
-#   3. sub-summary         → filter: message_type = 'SUMMARY'
-#   4. sub-error           → filter: message_type = 'ERROR'
+# Required Azure SB subscriptions:
+#   1. sub-transcription     → filter: message_type = 'TRANSCRIPTION'
+#   2. sub-accessible        → filter: message_type = 'ACCESSIBLE'
+#   3. sub-summary           → filter: message_type = 'SUMMARY'
+#   4. sub-error             → filter: message_type = 'ERROR'
+#   5. sub-summary-request   → filter: message_type = 'SUMMARY_REQUEST'
+#                              consumed by SummaryAgent._receive_loop
 #
-# Any additional subscriptions (e.g. ROUTED, ACCESSIBLE,
-# GESTURE_RESULT, AUDIO_CHUNK, etc.) are NOT backed by a receiver in this
-# service and should be removed from Azure to avoid unbounded message buildup.
+# Internal pipeline steps (ROUTED, AUDIO_CHUNK, GESTURE) are dispatched
+# entirely in-process and are NOT forwarded to SB.
 # ──────────────────────────────────────────────────────────────────
 _SB_FORWARD_TYPES: frozenset[str] = frozenset({
     MessageType.TRANSCRIPTION,   # raw speech — analytics / audit
     MessageType.ACCESSIBLE,      # terminal pipeline result (text ready)
-    MessageType.SUMMARY,         # meeting summary
+    MessageType.SUMMARY,         # meeting summary — external consumers
+    MessageType.SUMMARY_REQUEST, # on-demand trigger — consumed by SummaryAgent worker
     MessageType.ERROR,           # errors
 })
+
+# SB subscriptions that have a _receive_loop receiver in this process.
+# Only SUMMARY_REQUEST needs a receive loop — it triggers real work in
+# SummaryAgent.  All other SB subscriptions are for external consumers only.
+_SB_RECEIVE_SUBSCRIPTIONS: dict[str, str] = {
+    "sub-summary-request": MessageType.SUMMARY_REQUEST,
+}
 
 
 class AsyncAgentBus:
@@ -119,13 +125,36 @@ class AsyncAgentBus:
             )
         else:
             logger.info(
-                "[AgentBus] Service Bus configured (single-instance mode) — "
-                "dispatching in-process, forwarding events to SB topic for external consumers."
+                "[AgentBus] Service Bus configured — dispatching in-process, "
+                "forwarding terminal events to SB topic, and starting receive "
+                "loops for worker subscriptions (SUMMARY_REQUEST)."
             )
-     
+
             # Pre-warm the AMQP sender so the first real message send doesn't
             # run into a cold TCP+TLS+AMQP handshake inside the 0.8 s timeout.
             await self._sb_service.initialize()
+
+            # Start receive loops only for subscriptions that have registered
+            # handlers in this process.  Currently only SUMMARY_REQUEST is
+            # consumed here; other subscriptions (TRANSCRIPTION, ACCESSIBLE,
+            # SUMMARY, ERROR) are for external consumers only.
+            for sub_name, event_type_value in _SB_RECEIVE_SUBSCRIPTIONS.items():
+                event_type = MessageType(event_type_value)
+                if self._subscribers.get(event_type):
+                    task = asyncio.create_task(
+                        self._receive_loop(sub_name, event_type),
+                        name=f"agent-bus:sb-recv:{sub_name}",
+                    )
+                    self._receiver_tasks.append(task)
+                    logger.info(
+                        "[AgentBus] Started SB receive loop: subscription=%s event_type=%s",
+                        sub_name, event_type,
+                    )
+                else:
+                    logger.debug(
+                        "[AgentBus] No handlers for %s — skipping SB receive loop for %s",
+                        event_type, sub_name,
+                    )
 
         # Start periodic cleanup of stale event store entries
         self._cleanup_task = asyncio.create_task(

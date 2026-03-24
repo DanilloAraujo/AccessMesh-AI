@@ -13,7 +13,7 @@
  * calls are centralised in the backend.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { recognizeAudio } from '../services/speechService';
 import { type ChatMessage } from '../services/websocketService';
 
@@ -35,12 +35,16 @@ const NativeSpeechRecognitionCtor: (new () => any) | undefined =
 export interface SpeechRecognitionOptions {
     sessionId: string;
     userId: string;
+    /** Pass the reactive language selection from MeetingContext so the hook
+     * always uses the current language without requiring a stop/restart. */
+    targetLanguage?: string;
     processSpeech: (text: string, language?: string, targetLanguage?: string) => Promise<ChatMessage | null>;
 }
 
 export function useSpeechRecognition({
     sessionId,
     userId,
+    targetLanguage,
     processSpeech,
 }: SpeechRecognitionOptions): UseSpeechRecognitionReturn {
     const [recognitionState, setRecognitionState] = useState<RecognitionState>('idle');
@@ -51,6 +55,31 @@ export function useSpeechRecognition({
     const onTranscriptRef = useRef<((msg: ChatMessage) => void) | null>(null);
     const isListeningRef = useRef(false);
     const streamRef = useRef<MediaStream | null>(null);
+
+    // Always-current ref for the active language — read by async callbacks
+    // without stale closure captures.
+    const languageRef = useRef<string>(
+        targetLanguage
+        ?? sessionStorage.getItem('language')
+        ?? localStorage.getItem('preferredLanguage')
+        ?? 'en-US',
+    );
+
+    // Keep languageRef in sync with the parent's reactive targetLanguage prop.
+    // When the language changes while native SpeechRecognition is running, stop
+    // the current instance — its onend handler will restart it with the new lang.
+    useEffect(() => {
+        if (!targetLanguage) return;
+        languageRef.current = targetLanguage;
+        // Sync sessionStorage so non-hook code can also read the current language.
+        sessionStorage.setItem('language', targetLanguage);
+        sessionStorage.setItem('targetLanguage', targetLanguage);
+        // Restart native recognition with the newly selected language.
+        if (isListeningRef.current && nativeRecRef.current) {
+            console.log('[useSpeechRecognition] Language changed to %s — restarting native recognition', targetLanguage);
+            try { nativeRecRef.current.stop(); } catch (_e) { /* onend will restart */ }
+        }
+    }, [targetLanguage]);
 
     // Audio Chunking length (5 seconds per payload to the backend)
     const CHUNK_MS = 5000;
@@ -103,8 +132,8 @@ export function useSpeechRecognition({
 
                 if (blob.size === 0) return;
 
-                const language = sessionStorage.getItem('language') ?? localStorage.getItem('preferredLanguage') ?? 'en-US';
-                const targetLanguage = sessionStorage.getItem('targetLanguage') ?? localStorage.getItem('preferredLanguage') ?? 'en-US';
+                const language = languageRef.current;
+                const targetLanguage = languageRef.current;
                 console.log('[useSpeechRecognition] MediaRecorder slice ready — size=%d lang=%s target=%s', blob.size, language, targetLanguage);
 
                 try {
@@ -144,7 +173,7 @@ export function useSpeechRecognition({
 
         isListeningRef.current = true;
         const rec = new NativeSpeechRecognitionCtor();
-        rec.lang = sessionStorage.getItem('language') ?? localStorage.getItem('preferredLanguage') ?? 'en-US';
+        rec.lang = languageRef.current;
         // continuous will send text slices mid-speech forever without cutting out
         rec.continuous = true;
         rec.interimResults = false;
@@ -163,8 +192,8 @@ export function useSpeechRecognition({
             console.log('[useSpeechRecognition] NativeSpeechRecognition slice result — text=%s confidence=%.2f', text || '(empty)', confidence);
             if (!text) return;
 
-            const language = sessionStorage.getItem('language') ?? localStorage.getItem('preferredLanguage') ?? 'en-US';
-            const targetLanguage = sessionStorage.getItem('targetLanguage') ?? localStorage.getItem('preferredLanguage') ?? 'en-US';
+            const language = languageRef.current;
+            const targetLanguage = languageRef.current;
             console.log('[useSpeechRecognition] Calling processSpeech — text=%s lang=%s target=%s', text, language, targetLanguage);
             try {
                 const msg = await processSpeech(text, language, targetLanguage);

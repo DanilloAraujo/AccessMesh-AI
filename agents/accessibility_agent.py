@@ -31,10 +31,23 @@ class AccessibilityAgent(BaseAgent):
         self,
         msg: RoutedMessage,
     ) -> AccessibleMessage:
+        # Base feature: always add subtitles
         features = [AccessibilityFeature.SUBTITLES]
         metadata = dict(msg.metadata)
 
-        logger.info("AccessibilityAgent.process — session=%s text=%s", msg.session_id, msg.text[:80])
+        # Apply participant-requested accessibility features from metadata.
+        # These are set by the frontend when the user configures their preferences
+        # (high contrast, large text, sign language overlay).
+        requested: list[str] = metadata.get("accessibility_features", [])
+        for feat_value in requested:
+            try:
+                feat = AccessibilityFeature(feat_value)
+                if feat not in features:
+                    features.append(feat)
+            except ValueError:
+                pass  # ignore unknown feature values
+
+        logger.info("AccessibilityAgent.process — session=%s features=%s text=%s", msg.session_id, [f.value for f in features], msg.text[:80])
 
         return AccessibleMessage(
             session_id=msg.session_id,

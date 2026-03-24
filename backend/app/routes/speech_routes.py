@@ -69,6 +69,7 @@ class VoiceRequest(BaseModel):
     user_id: str     = Field(..., max_length=128,   description="Participant user_id.")
     display_name: str = Field(default="", max_length=128, description="Sender display name shown in conversation.")
     language: str    = Field(default="en-US", max_length=10, description="BCP-47 language tag.")
+    target_language: str = Field(default="", max_length=10, description="BCP-47 target language for TTS output (defaults to language if empty).")
 
 
 class VoiceResponse(BaseModel):

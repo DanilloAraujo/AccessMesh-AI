@@ -19,6 +19,7 @@ class MessageType(str, Enum):
     ROUTED            = "routed"
     ACCESSIBLE        = "accessible"
     SUMMARY           = "summary"
+    SUMMARY_REQUEST   = "summary_request"  # on-demand trigger: POST /summary → SB → SummaryAgent
     CHAT              = "chat"
     SYSTEM            = "system"
     ERROR             = "error"

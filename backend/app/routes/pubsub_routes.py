@@ -17,8 +17,9 @@ router = APIRouter(prefix="/pubsub", tags=["PubSub"])
 
 
 class TokenRequest(BaseModel):
-    user_id: str    = Field(..., max_length=128, description="Unique participant identifier.")
-    session_id: str = Field(..., max_length=128, description="Meeting session / room identifier.")
+    user_id: str      = Field(..., max_length=128, description="Unique participant identifier.")
+    session_id: str   = Field(..., max_length=128, description="Meeting session / room identifier.")
+    display_name: str = Field(default="", max_length=128, description="Human-readable participant name.")
 
 
 class TokenResponse(BaseModel):
@@ -50,6 +51,17 @@ async def get_pubsub_token(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="HubManager not initialised.",
         )
+
+    # Register the participant — creates the session document in Cosmos DB
+    # (idempotent: safe to call on every reconnect).
+    try:
+        hub.join(
+            session_id=body.session_id,
+            user_id=body.user_id,
+            display_name=body.display_name,
+        )
+    except Exception as exc:
+        logger.warning("[pubsub_token] hub.join failed (non-fatal): %s", exc)
 
     try:
         result = hub.get_client_token(

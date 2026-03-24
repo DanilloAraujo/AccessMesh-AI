@@ -77,7 +77,8 @@ class WebSocketService {
         headers: this._getAuthHeaders(),
         body: JSON.stringify({
           user_id: this.userId,
-          session_id: this.sessionId
+          session_id: this.sessionId,
+          display_name: this.displayName || this.userId,
         })
       });
 
@@ -278,6 +279,7 @@ class WebSocketService {
           user_id: this.userId,
           display_name: this.displayName,
           language,
+          target_language: targetLanguage,
         }),
       });
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator, Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -57,6 +57,10 @@ for _noisy in (
 
 logger = logging.getLogger(__name__)
 
+# Module-level singleton exposed so session_store can access CosmosService
+# without a circular import on app.state.  Set during lifespan startup.
+_cosmos_service_instance: Optional[Any] = None
+
 
 
 def create_app() -> FastAPI:
@@ -96,8 +100,11 @@ def create_app() -> FastAPI:
         )
 
         # ── Azure Cosmos DB ─────────────────────────────────────────────
+        global _cosmos_service_instance
         app.state.cosmos = CosmosService()
         await app.state.cosmos.initialize()
+        # Expose singleton so session_store can resolve Cosmos without app.state
+        _cosmos_service_instance = app.state.cosmos
         logger.info(
             "[OK] CosmosService — persistence: %s",
             "enabled" if app.state.cosmos.is_enabled else "in-memory (set COSMOS_ENDPOINT + COSMOS_KEY)",
@@ -134,7 +141,10 @@ def create_app() -> FastAPI:
         _router_agent      = RouterAgent()
         _access_agent      = AccessibilityAgent()
         _gesture_agent     = GestureAgent()
-        _summary_agent     = SummaryAgent()
+        _summary_agent     = SummaryAgent(
+            mcp_client=mcp_client,
+            cosmos_service=app.state.cosmos,  # stateless: reads Cosmos on SUMMARY_REQUEST
+        )
         _speech_agent      = SpeechAgent(mcp_client=mcp_client)
 
         # Register agents in the service-discovery registry (for API routes)
@@ -194,6 +204,7 @@ def create_app() -> FastAPI:
         if app.state.cosmos:
             await app.state.cosmos.close()
         app.state.cosmos          = None
+        _cosmos_service_instance  = None  # noqa: F841  clear module singleton
         app.state.content_safety  = None
         app.state.telemetry       = None
 

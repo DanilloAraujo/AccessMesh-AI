@@ -24,7 +24,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_ALL_AGENTS: List[str] = ["accessibility_agent"]
+_ALL_AGENTS: List[str] = ["accessibility_agent", "speech_agent"]
+_TEXT_ONLY_AGENTS: List[str] = ["accessibility_agent"]
 
 
 class RouterAgent(BaseAgent):
@@ -41,9 +42,15 @@ class RouterAgent(BaseAgent):
     subscribes_to: ClassVar[List[MessageType]] = [MessageType.TRANSCRIPTION]
 
     async def route(self, msg: TranscriptionMessage) -> RoutedMessage:
-        # All messages flow through the accessibility agent for subtitle and
-        # sign-language enrichment. No spoken→spoken translation path.
-        target_agents = _ALL_AGENTS
+        # Route based on communication mode declared in the message metadata.
+        # - voice/gesture messages: include speech_agent for TTS output (aids
+        #   participants who prefer audio feedback).
+        # - text-only messages: skip TTS to avoid echoing typed input as audio.
+        communication_mode: str = msg.metadata.get("communication_mode", "voice")
+        if communication_mode in ("voice", "gesture"):
+            target_agents = _ALL_AGENTS
+        else:
+            target_agents = _TEXT_ONLY_AGENTS
 
         routed = RoutedMessage(
             session_id=msg.session_id,

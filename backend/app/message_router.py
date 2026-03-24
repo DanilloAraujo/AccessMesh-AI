@@ -31,6 +31,14 @@ class MessageRouter:
     async def _screen(self, text: str) -> None:
         """Raise ValueError if content safety blocks the text."""
         if self._content_safety is None:
+            logger.debug("[ContentSafety] Service not configured — screening skipped.")
+            return
+        if not getattr(self._content_safety, "is_enabled", False):
+            logger.warning(
+                "[ContentSafety] Service is disabled (missing credentials) — "
+                "messages are NOT being screened. Set CONTENT_SAFETY_ENDPOINT "
+                "and CONTENT_SAFETY_KEY in production."
+            )
             return
         try:
             result = await asyncio.to_thread(self._content_safety.analyze_text, text)
