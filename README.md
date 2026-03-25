@@ -37,8 +37,6 @@
 - [Security](#-security)
 - [Project Structure](#️-project-structure)
 - [Roadmap & Future Evolution](#-roadmap--future-evolution)
-- [Contributing](#-contributing)
-- [License](#-license)
 
 ---
 
