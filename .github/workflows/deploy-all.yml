@@ -29,7 +29,10 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Log in to ACR
-        run: az acr login --name "${{ secrets.ACR_NAME }}"
+        run: |
+          echo "${{ secrets.ACR_PASSWORD }}" | docker login "${{ secrets.ACR_LOGIN_SERVER }}" \
+            --username "${{ secrets.ACR_USERNAME }}" \
+            --password-stdin
 
       - name: Build and push MCP image
         run: |
@@ -69,7 +72,10 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Log in to ACR
-        run: az acr login --name "${{ secrets.ACR_NAME }}"
+        run: |
+          echo "${{ secrets.ACR_PASSWORD }}" | docker login "${{ secrets.ACR_LOGIN_SERVER }}" \
+            --username "${{ secrets.ACR_USERNAME }}" \
+            --password-stdin
 
       - name: Build and push Backend image
         run: |
