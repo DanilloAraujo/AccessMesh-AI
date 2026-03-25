@@ -58,6 +58,7 @@ jobs:
       # ── 5. Update Container App with the new image ───────────────────
       - name: Deploy to Azure Container Apps
         run: |
+          az extension add --name containerapp --upgrade --yes
           az containerapp update \
             --name            "${{ secrets.BACKEND_CONTAINER_APP_NAME }}" \
             --resource-group  "${{ secrets.AZURE_RESOURCE_GROUP }}" \
