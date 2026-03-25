@@ -1,10 +1,10 @@
 import { Brain, Camera, CameraOff, Hand, Loader } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useMeeting } from '../context/MeetingContext';
 import { useHandLandmarker } from '../hooks/useHandLandmarker';
 import { translate, useTranslation } from '../hooks/useTranslation';
 import type { GestureFrameResult } from '../services/gestureService';
 import { sendFrame, sendLandmarks } from '../services/gestureService';
-import { useMeeting } from '../context/MeetingContext';
 import { classifyGesture } from '../utils/gestureClassifier';
 
 const DEBOUNCE_FRAMES = 3;
@@ -27,7 +27,7 @@ const GestureCamera: React.FC<GestureCameraProps> = ({
     onGestureResult,
     disabled = false,
     autoStart = false,
-    }) => {
+}) => {
     const { sessionId, userId } = useMeeting();
     const { status: modelStatus, detect } = useHandLandmarker();
     const { t } = useTranslation();
