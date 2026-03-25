@@ -1,14 +1,8 @@
 name: "Deploy MCP — Azure Container Apps"
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "mcp/**"
-      - "services/**"
-      - "shared/**"
-      - "requirements.txt"
-      - "mcp/Dockerfile"
+  # Use deploy-all.yml para push automático com ordem garantida.
+  # Este workflow existe para redeploy manual isolado do MCP.
   workflow_dispatch:
 
 # OIDC token required for azure/login federated identity
