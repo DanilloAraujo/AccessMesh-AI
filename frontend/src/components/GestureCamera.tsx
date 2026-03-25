@@ -1,16 +1,25 @@
 import { Brain, Camera, CameraOff, Hand, Loader } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useMeeting } from '../context/MeetingContext';
 import { useHandLandmarker } from '../hooks/useHandLandmarker';
 import { translate, useTranslation } from '../hooks/useTranslation';
 import type { GestureFrameResult } from '../services/gestureService';
 import { sendFrame, sendLandmarks } from '../services/gestureService';
-import { useMeeting } from '../context/MeetingContext';
 import { classifyGesture } from '../utils/gestureClassifier';
 
-const DEBOUNCE_FRAMES = 3;
-const DEBOUNCE_MS = 800;
+/** Minimum consecutive frames with the same label before we start the hold timer. */
+const DEBOUNCE_FRAMES = 10;
+/** Minimum time (ms) the same label must be held stable before emitting. */
+const HOLD_MS = 800;
+/** Cooldown (ms) before the same label can be emitted again. */
+const DEBOUNCE_MS = 1500;
 const AI_FALLBACK_INTERVAL_MS = 4000;
-const CONFIDENCE_THRESHOLD = 0.6;
+const CONFIDENCE_THRESHOLD = 0.65;
+/**
+ * Max normalised landmark movement per frame to be considered "stable".
+ * Values are in [0,1] screen-space; 0.02 ≈ 2% of frame width per frame.
+ */
+const MOTION_THRESHOLD = 0.02;
 
 interface GestureCameraProps {
     onGestureDetected?: (gestureLabel: string) => void;
@@ -27,7 +36,7 @@ const GestureCamera: React.FC<GestureCameraProps> = ({
     onGestureResult,
     disabled = false,
     autoStart = false,
-    }) => {
+}) => {
     const { sessionId, userId } = useMeeting();
     const { status: modelStatus, detect } = useHandLandmarker();
     const { t } = useTranslation();
@@ -47,6 +56,10 @@ const GestureCamera: React.FC<GestureCameraProps> = ({
     const consecutiveRef = useRef<number>(0);
     const lastLabelRef = useRef<string>('');
     const lastAiFallbackRef = useRef<number>(0);
+    /** Timestamp (ms) when the current label first satisfied DEBOUNCE_FRAMES. */
+    const holdStartRef = useRef<number>(0);
+    /** Previous-frame landmarks for motion estimation. */
+    const prevLandmarksRef = useRef<{ x: number; y: number; z: number }[] | null>(null);
 
     const onGestureDetectedRef = useRef(onGestureDetected);
     const onGestureResultRef = useRef(onGestureResult);
@@ -82,6 +95,8 @@ const GestureCamera: React.FC<GestureCameraProps> = ({
         setLastGesture(null);
         setHandCount(0);
         handCountRef.current = 0;
+        prevLandmarksRef.current = null;
+        holdStartRef.current = 0;
     }, []);
 
     useEffect(() => {
@@ -107,11 +122,35 @@ const GestureCamera: React.FC<GestureCameraProps> = ({
             if (!result || newCount === 0) {
                 consecutiveRef.current = 0;
                 lastLabelRef.current = '';
+                holdStartRef.current = 0;
+                prevLandmarksRef.current = null;
                 return;
             }
 
             const lm = result.landmarks[0];
             const handedness = result.handednesses[0]?.[0]?.categoryName as 'Left' | 'Right' ?? 'Right';
+
+            // --- Motion guard: suppress detection while the hand is moving ---
+            const prev = prevLandmarksRef.current;
+            if (prev && prev.length === lm.length) {
+                let maxDelta = 0;
+                for (let i = 0; i < lm.length; i++) {
+                    const dx = lm[i].x - prev[i].x;
+                    const dy = lm[i].y - prev[i].y;
+                    const d = Math.sqrt(dx * dx + dy * dy);
+                    if (d > maxDelta) maxDelta = d;
+                }
+                if (maxDelta > MOTION_THRESHOLD) {
+                    // Hand is in motion — reset stable-gesture tracking but keep landmarks
+                    consecutiveRef.current = 0;
+                    lastLabelRef.current = '';
+                    holdStartRef.current = 0;
+                    prevLandmarksRef.current = lm.map((p) => ({ x: p.x, y: p.y, z: p.z }));
+                    return;
+                }
+            }
+            prevLandmarksRef.current = lm.map((p) => ({ x: p.x, y: p.y, z: p.z }));
+
             const classified = classifyGesture(lm, handedness);
 
             if (classified.confidence < CONFIDENCE_THRESHOLD || classified.label === 'unknown') {
@@ -130,23 +169,40 @@ const GestureCamera: React.FC<GestureCameraProps> = ({
                     }
                 }
                 consecutiveRef.current = 0;
+                lastLabelRef.current = '';
+                holdStartRef.current = 0;
                 return;
             }
 
+            // --- Stable-frame counter ---
             if (classified.label === lastLabelRef.current) {
                 consecutiveRef.current++;
             } else {
                 consecutiveRef.current = 1;
                 lastLabelRef.current = classified.label;
+                holdStartRef.current = 0;
             }
+
+            // Gate 1: minimum number of consecutive matching frames
             if (consecutiveRef.current < DEBOUNCE_FRAMES) return;
 
+            // Gate 2: start the hold timer on the first qualifying frame
             const now = Date.now();
+            if (holdStartRef.current === 0) {
+                holdStartRef.current = now;
+                return;
+            }
+
+            // Gate 3: must be held for HOLD_MS
+            if (now - holdStartRef.current < HOLD_MS) return;
+
+            // Gate 4: cooldown — same label too soon
             if (classified.label === lastEmitLabelRef.current && now - lastEmitTimeRef.current < DEBOUNCE_MS) return;
 
             lastEmitTimeRef.current = now;
             lastEmitLabelRef.current = classified.label;
             consecutiveRef.current = 0;
+            holdStartRef.current = 0;
 
             setLastGesture(classified.label);
             setConfidence(classified.confidence);
