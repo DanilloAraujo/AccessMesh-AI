@@ -1,0 +1,35 @@
+{
+    "navigationFallback": {
+        "rewrite": "/index.html",
+        "exclude": [
+            "/assets/*",
+            "/signs/*"
+        ]
+    },
+    "mimeTypes": {
+        ".wasm": "application/wasm",
+        ".task": "application/octet-stream",
+        ".tflite": "application/octet-stream"
+    },
+    "globalHeaders": {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "X-XSS-Protection": "1; mode=block",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=*, microphone=*"
+    },
+    "routes": [
+        {
+            "route": "/assets/*",
+            "headers": {
+                "Cache-Control": "public, max-age=31536000, immutable"
+            }
+        },
+        {
+            "route": "/signs/*",
+            "headers": {
+                "Cache-Control": "public, max-age=86400"
+            }
+        }
+    ]
+}
