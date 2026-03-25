@@ -47,9 +47,18 @@ jobs:
 
       - name: Deploy MCP to Container Apps
         run: |
+          echo "=== Subscriptions available ==="
+          az account list --output table
+          echo "=== Container Apps in resource group ==="
+          az containerapp list \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --subscription   "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            --output table || true
+          echo "=== Deploying ==="
           az containerapp update \
             --name           "${{ secrets.MCP_CONTAINER_APP_NAME }}" \
             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --subscription   "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
             --image          "${{ env.IMAGE_TAG }}"
 
   # ── 2. Backend (espera MCP estar no ar) ──────────────────────────────────
@@ -90,9 +99,16 @@ jobs:
 
       - name: Deploy Backend to Container Apps
         run: |
+          echo "=== Container Apps in resource group ==="
+          az containerapp list \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --subscription   "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            --output table || true
+          echo "=== Deploying ==="
           az containerapp update \
             --name           "${{ secrets.BACKEND_CONTAINER_APP_NAME }}" \
             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --subscription   "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
             --image          "${{ env.IMAGE_TAG }}"
 
   # ── 3. Frontend (espera Backend estar no ar) ─────────────────────────────
