@@ -48,38 +48,6 @@ jobs:
       - name: Deploy MCP to Container Apps
         run: |
           az extension add --name containerapp --upgrade --yes
-
-          echo "=== Active account ==="
-          az account show --output table
-
-          echo "=== All resource groups ==="
-          az group list \
-            --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-            --output table
-
-          echo "=== ALL Container Apps in subscription ==="
-          az containerapp list \
-            --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-            --output table
-
-          echo "=== Secret AZURE_RESOURCE_GROUP value ==="
-          echo "Resource group: ${{ secrets.AZURE_RESOURCE_GROUP }}"
-
-          echo "=== RBAC: checking SP permissions on resource group ==="
-          az role assignment list \
-            --assignee "${{ secrets.AZURE_CLIENT_ID }}" \
-            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
-            --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-            --output table || true
-
-          echo "=== Verifying container app exists ==="
-          az containerapp show \
-            --name           "${{ secrets.MCP_CONTAINER_APP_NAME }}" \
-            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
-            --subscription   "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-            --output table
-
-          echo "=== Deploying ==="
           az containerapp update \
             --name           "${{ secrets.MCP_CONTAINER_APP_NAME }}" \
             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
@@ -125,13 +93,6 @@ jobs:
       - name: Deploy Backend to Container Apps
         run: |
           az extension add --name containerapp --upgrade --yes
-
-          echo "=== Container Apps in resource group ==="
-          az containerapp list \
-            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
-            --subscription   "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-            --output table || true
-          echo "=== Deploying ==="
           az containerapp update \
             --name           "${{ secrets.BACKEND_CONTAINER_APP_NAME }}" \
             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
