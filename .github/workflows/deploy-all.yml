@@ -65,6 +65,20 @@ jobs:
           echo "=== Secret AZURE_RESOURCE_GROUP value ==="
           echo "Resource group: ${{ secrets.AZURE_RESOURCE_GROUP }}"
 
+          echo "=== RBAC: checking SP permissions on resource group ==="
+          az role assignment list \
+            --assignee "${{ secrets.AZURE_CLIENT_ID }}" \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            --output table || true
+
+          echo "=== Verifying container app exists ==="
+          az containerapp show \
+            --name           "${{ secrets.MCP_CONTAINER_APP_NAME }}" \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --subscription   "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            --output table
+
           echo "=== Deploying ==="
           az containerapp update \
             --name           "${{ secrets.MCP_CONTAINER_APP_NAME }}" \
