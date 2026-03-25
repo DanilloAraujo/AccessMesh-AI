@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Optional
 
 from agents.agent_bus import AsyncAgentBus, agent_bus as _default_bus
-from services.webpubsub_service import WebPubSubService
 from shared.message_schema import (
     AccessibilityFeature,
     AccessibleMessage,
-    AvatarReadyMessage,
     Language,
     MessageType,
     TranscriptionMessage,
@@ -34,21 +33,12 @@ class AgentMeshPipeline:
     def __init__(
         self,
         bus: Optional[AsyncAgentBus] = None,
-        pubsub_service: Optional[WebPubSubService] = None,
+        pubsub_service=None,
         telemetry=None,
     ) -> None:
         self._bus = bus or _default_bus
         self._pubsub = pubsub_service
         self._telemetry = telemetry
-
-    async def _publish(self, group: str, payload: dict) -> None:
-        """Non-blocking publish to WebPubSub via thread pool."""
-        if not self._pubsub:
-            return
-        try:
-            await asyncio.to_thread(self._pubsub.send_to_group, group=group, message=payload)
-        except Exception as exc:
-            logger.warning("Failed to publish to WebPubSub: %s", exc)
 
     async def run(
         self,
@@ -57,24 +47,22 @@ class AgentMeshPipeline:
         session_id: str,
         user_id: str,
         language: str = "en-US",
-        target_language: str = "en-US",
     ) -> AccessibleMessage:
         """
         Publish a TranscriptionMessage onto the AsyncAgentBus and collect the
-        terminal AvatarReadyMessage produced by the agent chain.
+        terminal AccessibleMessage produced by AccessibilityAgent.
 
-        The entire pipeline (Router → Accessibility ‖ Translation → Avatar →
-        SummaryAccumulator) executes via the bus without any direct agent
-        references here.  This method only knows about the seed event type
-        (TRANSCRIPTION) and the terminal event type (AVATAR_READY).
+        Pipeline: RouterAgent → AccessibilityAgent → ACCESSIBLE
 
-        Falls back to a minimal AccessibleMessage if the bus times out.
+        All participants receive text — no TTS, no sign gloss.
+        Falls back to a minimal AccessibleMessage on timeout.
         """
         logger.info(
-            "Pipeline.run (bus) — session=%s user=%s lang=%s text=%s",
+            "Pipeline.run — session=%s user=%s lang=%s text=%s",
             session_id, user_id, language, text[:80],
         )
 
+        t0 = time.perf_counter()
         transcription = TranscriptionMessage(
             session_id=session_id,
             sender_id=user_id,
@@ -84,7 +72,6 @@ class AgentMeshPipeline:
             detected_language=_LANGUAGE_MAP.get(language),
             metadata={
                 "language": language,
-                "target_language": target_language,
             },
         )
 
@@ -92,13 +79,12 @@ class AgentMeshPipeline:
 
         terminal = await self._bus.publish_and_collect(
             transcription,
-            collect_type=MessageType.AVATAR_READY,
+            collect_type=MessageType.ACCESSIBLE,
             timeout=_settings.pipeline_timeout_seconds,
         )
+        elapsed_ms = (time.perf_counter() - t0) * 1000
 
         if terminal is None:
-            # Timeout — return a minimal subtitle-only result so the caller
-            # always gets a usable AccessibleMessage
             logger.warning(
                 "Pipeline.run timeout (%.0fs) — returning minimal result for session=%s",
                 _settings.pipeline_timeout_seconds, session_id,
@@ -116,37 +102,12 @@ class AgentMeshPipeline:
                 metadata={},
             )
 
-        # Convert AvatarReadyMessage into an AccessibleMessage-compatible
-        # object so MessageRouter._build_payload() works unchanged.
-        avatar_ready: AvatarReadyMessage = terminal  # type: ignore[assignment]
-        meta: dict = dict(avatar_ready.metadata or {})
-        gloss = (avatar_ready.animation_data or {}).get("gloss_sequence") or meta.get("gloss_sequence")
-        if gloss:
-            meta["gloss_sequence"] = gloss
-
-        features = [AccessibilityFeature.SUBTITLES, AccessibilityFeature.SIGN_LANGUAGE]
-        if meta.get("audio_b64"):
-            features.append(AccessibilityFeature.AUDIO_DESCRIPTION)
-
-        result = AccessibleMessage(
-            message_id=avatar_ready.message_id,
-            session_id=avatar_ready.session_id,
-            sender_id=avatar_ready.sender_id,
-            text=meta.get("original_text", text),
-            features_applied=features,
-            aria_labels={
-                "role": "log",
-                "aria-live": "polite",
-                "aria-label": f"Caption from {avatar_ready.sender_id}: {meta.get('original_text', text)}",
-            },
-            metadata=meta,
-        )
+        accessible: AccessibleMessage = terminal  # type: ignore[assignment]
 
         logger.info(
-            "Pipeline done — session=%s features=%s gloss_count=%d audio=%s",
+            "Pipeline done — session=%s elapsed_ms=%.0f features=%s",
             session_id,
-            [f.value if hasattr(f, "value") else f for f in result.features_applied],
-            len(meta.get("gloss_sequence") or []),
-            "yes" if meta.get("audio_b64") else "no",
+            elapsed_ms,
+            [f.value if hasattr(f, "value") else f for f in accessible.features_applied],
         )
-        return result
+        return accessible

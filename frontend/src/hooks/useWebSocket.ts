@@ -11,7 +11,6 @@ export interface UseWebSocketReturn {
     messages: ChatMessage[];
     userId: string;
     sessionId: string;
-    sendMessage: (text: string) => ChatMessage | null;
     sendChatMessage: (text: string, targetLanguage?: string) => Promise<ChatMessage | null>;
     processSpeech: (text: string, language?: string, targetLanguage?: string) => Promise<ChatMessage | null>;
     sendGesture: (gestureLabel: string, targetLanguage?: string) => Promise<ChatMessage | null>;
@@ -72,8 +71,6 @@ export function useWebSocket(
         };
     }, [ws]);
 
-    const sendMessage = useCallback((text: string) => ws.sendMessage(text), [ws]);
-
     const sendChatMessage = useCallback(
         (text: string, targetLanguage = 'en-US') => ws.sendChatMessage(text, targetLanguage),
         [ws],
@@ -106,7 +103,6 @@ export function useWebSocket(
         messages,
         userId: ws.userId,
         sessionId: ws.sessionId,
-        sendMessage,
         sendChatMessage,
         processSpeech,
         sendGesture,

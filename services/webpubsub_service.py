@@ -85,22 +85,6 @@ class WebPubSubService:
             raise
 
 
-    def send_to_all(self, message: Dict[str, Any]) -> None:
-        """Send a message to all clients connected to the hub."""
-        if self._client is None:
-            raise RuntimeError(
-                "WebPubSubService is not configured — set WEBPUBSUB_CONNECTION_STRING."
-            )
-        try:
-            self._client.send_to_all(
-                message=json.dumps(message, default=str),
-                content_type="application/json",
-            )
-            logger.debug("Message sent to all: type=%s", message.get("message_type"))
-        except AzureError as exc:
-            logger.error("Failed to send to all: %s", exc)
-            raise
-
     def send_to_group(self, group: str, message: Dict[str, Any]) -> None:
         """Send a message to a specific group (session/room)."""
         if self._client is None:

@@ -39,17 +39,3 @@ class RealtimeDispatcher:
         except Exception as exc:
             logger.error("[Dispatcher] Failed to dispatch to %s: %s", session_id, exc)
             return False
-
-    def dispatch_system(self, session_id: str, text: str) -> bool:
-        """Convenience helper for system-level announcements."""
-        return self.dispatch(
-            session_id,
-            {"type": "system", "content": text},
-        )
-
-    def dispatch_error(self, session_id: str, detail: str) -> bool:
-        """Convenience helper for error notifications."""
-        return self.dispatch(
-            session_id,
-            {"type": "error", "content": detail},
-        )

@@ -5,19 +5,17 @@ from __future__ import annotations
 import logging
 import sys
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator, Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from agents.accessibility_agent import AccessibilityAgent
-from agents.avatar_agent import AvatarAgent
 from agents.gesture_agent import GestureAgent
 from agents.pipeline import AgentMeshPipeline
 from agents.speech_agent import SpeechAgent
 from agents.router_agent import RouterAgent
 from agents.summary_agent import SummaryAgent
-from agents.translation_agent import TranslationAgent
 from shared.config import settings
 from backend.app.core.hub_manager import HubManager
 from backend.app.core.realtime_dispatcher import RealtimeDispatcher
@@ -28,7 +26,6 @@ from services.summarization_service import SummarizationService
 from services.webpubsub_service import WebPubSubService
 from services.cosmos_service import CosmosService
 from services.content_safety_service import ContentSafetyService
-from services.translator_service import TranslatorService
 from services.telemetry_service import TelemetryService
 from services.servicebus_service import ServiceBusService
 
@@ -59,6 +56,10 @@ for _noisy in (
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
+
+# Module-level singleton exposed so session_store can access CosmosService
+# without a circular import on app.state.  Set during lifespan startup.
+_cosmos_service_instance: Optional[Any] = None
 
 
 
@@ -99,8 +100,11 @@ def create_app() -> FastAPI:
         )
 
         # ── Azure Cosmos DB ─────────────────────────────────────────────
+        global _cosmos_service_instance
         app.state.cosmos = CosmosService()
         await app.state.cosmos.initialize()
+        # Expose singleton so session_store can resolve Cosmos without app.state
+        _cosmos_service_instance = app.state.cosmos
         logger.info(
             "[OK] CosmosService — persistence: %s",
             "enabled" if app.state.cosmos.is_enabled else "in-memory (set COSMOS_ENDPOINT + COSMOS_KEY)",
@@ -113,12 +117,6 @@ def create_app() -> FastAPI:
             "enabled" if app.state.content_safety.is_enabled else "disabled (set CONTENT_SAFETY_ENDPOINT + CONTENT_SAFETY_KEY)",
         )
 
-        # ── Azure AI Translator ─────────────────────────────────────────
-        app.state.translator = TranslatorService()
-        logger.info(
-            "[OK] TranslatorService — dedicated translation: %s",
-            "enabled" if app.state.translator.is_enabled else "disabled (set TRANSLATOR_KEY)",
-        )
 
         # ── Gesture + Summarization ────────────────────────────────────
         app.state.gesture = GestureService()
@@ -141,18 +139,17 @@ def create_app() -> FastAPI:
         from mcp.mcp_client import mcp_client
 
         _router_agent      = RouterAgent()
-        _access_agent      = AccessibilityAgent(mcp_client=mcp_client)
-        _translation_agent = TranslationAgent()
-        _avatar_agent      = AvatarAgent(mcp_client=mcp_client)
+        _access_agent      = AccessibilityAgent()
         _gesture_agent     = GestureAgent()
-        _summary_agent     = SummaryAgent()
+        _summary_agent     = SummaryAgent(
+            mcp_client=mcp_client,
+            cosmos_service=app.state.cosmos,  # stateless: reads Cosmos on SUMMARY_REQUEST
+        )
         _speech_agent      = SpeechAgent(mcp_client=mcp_client)
 
         # Register agents in the service-discovery registry (for API routes)
         agent_registry.register("router_agent",        _router_agent)
         agent_registry.register("accessibility_agent", _access_agent)
-        agent_registry.register("translation_agent",   _translation_agent)
-        agent_registry.register("avatar_agent",        _avatar_agent)
         agent_registry.register("gesture_agent",       _gesture_agent)
         agent_registry.register("summary_agent",       _summary_agent)
         agent_registry.register("speech_agent",        _speech_agent)
@@ -160,8 +157,8 @@ def create_app() -> FastAPI:
         # Subscribe every agent to the bus according to its declared
         # ``subscribes_to`` list — this is the only wiring needed.
         # No agent holds a reference to any other agent.
-        for _agent in (_router_agent, _access_agent, _translation_agent,
-                       _avatar_agent, _gesture_agent, _summary_agent,
+        for _agent in (_router_agent, _access_agent,
+                       _gesture_agent, _summary_agent,
                        _speech_agent):
             _agent.register(agent_bus)
 
@@ -207,10 +204,9 @@ def create_app() -> FastAPI:
         if app.state.cosmos:
             await app.state.cosmos.close()
         app.state.cosmos          = None
+        _cosmos_service_instance  = None  # noqa: F841  clear module singleton
         app.state.content_safety  = None
-        app.state.translator      = None
         app.state.telemetry       = None
-
 
     application = FastAPI(
         title="AccessMesh-AI",

@@ -1,0 +1,66 @@
+name: "Deploy MCP — Azure Container Apps"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mcp/**"
+      - "services/**"
+      - "shared/**"
+      - "requirements.txt"
+      - "mcp/Dockerfile"
+  workflow_dispatch:
+
+# OIDC token required for azure/login federated identity
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  IMAGE_NAME: accessmesh-mcp
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    name: Build Docker Image and Update Container App
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Azure login (OIDC / federated identity) ───────────────────
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ── 3. Authenticate Docker to ACR ────────────────────────────────
+      - name: Log in to Azure Container Registry
+        run: az acr login --name "${{ secrets.ACR_NAME }}"
+
+      # ── 4. Build Docker image (context = repo root) ──────────────────
+      - name: Build and push Docker image
+        run: |
+          IMAGE_TAG="${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+
+          docker build \
+            --file mcp/Dockerfile \
+            --tag  "$IMAGE_TAG" \
+            .
+
+          docker push "$IMAGE_TAG"
+
+          docker tag "$IMAGE_TAG" "${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest"
+          docker push "${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest"
+
+      # ── 5. Update Container App with the new image ───────────────────
+      - name: Deploy to Azure Container Apps
+        run: |
+          az containerapp update \
+            --name            "${{ secrets.MCP_CONTAINER_APP_NAME }}" \
+            --resource-group  "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --image           "${{ env.IMAGE_TAG }}"

@@ -18,9 +18,8 @@ class MessageType(str, Enum):
     GESTURE           = "gesture"
     ROUTED            = "routed"
     ACCESSIBLE        = "accessible"
-    TRANSLATED        = "translated"
-    AVATAR_READY      = "avatar_ready"
     SUMMARY           = "summary"
+    SUMMARY_REQUEST   = "summary_request"  # on-demand trigger: POST /summary → SB → SummaryAgent
     CHAT              = "chat"
     SYSTEM            = "system"
     ERROR             = "error"
@@ -36,7 +35,7 @@ class AccessibilityFeature(str, Enum):
 
 
 class Language(str, Enum):
-    """Supported languages by the translation_agent."""
+    """Supported languages for speech and accessibility features."""
     PT_BR = "pt-BR"
     EN_US = "en-US"
     ES    = "es"
@@ -126,7 +125,7 @@ class RoutedMessage(BaseMessage):
     text: str = Field(..., description="Text to process.")
     target_agents: List[str] = Field(
         default_factory=list,
-        description="List of target agents (e.g., ['accessibility_agent', 'translation_agent']).",
+        description="List of target agents (e.g., ['accessibility_agent']).",
     )
 
 
@@ -151,40 +150,6 @@ class AccessibleMessage(BaseMessage):
     audio_b64: Optional[str] = Field(
         default=None,
         description="Base64-encoded MP3 from Azure Neural TTS for voice-mode playback.",
-    )
-
-
-class TranslatedMessage(BaseMessage):
-    """Text translated by the translation_agent."""
-
-    message_type: MessageType = MessageType.TRANSLATED
-    original_text: str = Field(..., description="Original text before translation.")
-    translated_text: str = Field(..., description="Translated text.")
-    source_language: Language = Field(..., description="Source language.")
-    target_language: Language = Field(..., description="Target language.")
-
-
-class AvatarReadyMessage(BaseMessage):
-    """Signal that the avatar_agent has completed processing."""
-
-    message_type: MessageType = MessageType.AVATAR_READY
-    avatar_url: Optional[str] = Field(
-        default=None,
-        description="Temporary URL for the generated avatar video/image.",
-    )
-    animation_data: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Animation data for client-side rendering.",
-    )
-    confidence: Optional[float] = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Speech-to-text transcription confidence (0–1) propagated from TranscriptionMessage.",
-    )
-    viseme_events: Optional[List[Dict[str, Any]]] = Field(
-        default=None,
-        description="Azure Neural TTS viseme timing events [{offset_ms, viseme_id}] for avatar lip-sync.",
     )
 
 
@@ -258,8 +223,6 @@ AnyMessage = (
     | GestureMessage
     | RoutedMessage
     | AccessibleMessage
-    | TranslatedMessage
-    | AvatarReadyMessage
     | MeetingSummaryMessage
     | SystemMessage
     | ErrorMessage
@@ -271,8 +234,6 @@ _MESSAGE_CLASS_MAP: Dict[str, type] = {
     MessageType.GESTURE:      GestureMessage,
     MessageType.ROUTED:       RoutedMessage,
     MessageType.ACCESSIBLE:   AccessibleMessage,
-    MessageType.TRANSLATED:   TranslatedMessage,
-    MessageType.AVATAR_READY: AvatarReadyMessage,
     MessageType.SUMMARY:      MeetingSummaryMessage,
     MessageType.SYSTEM:       SystemMessage,
     MessageType.ERROR:        ErrorMessage,

@@ -19,7 +19,6 @@ class ChannelContext:
     session_id: str
     user_id: str
     language: str = "en-US"
-    target_language: str = "en-US"
     display_name: str = ""
     communication_mode: str = "text"   # one of: text | sign_language | voice
     extra: dict = field(default_factory=dict)

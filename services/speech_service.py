@@ -138,8 +138,8 @@ class SpeechService:
         """
         Synthesise speech from text synchronously (blocking).
 
-        Tries the Azure Speech SDK (provides viseme events for avatar lip-sync)
-        first.  Falls back to the TTS REST API when the SDK is unavailable.
+        Tries the Azure Speech SDK first; falls back to the TTS REST API
+        when the SDK is unavailable.
 
         Parameters
         ----------
@@ -156,7 +156,6 @@ class SpeechService:
         dict with keys:
             ``audio_b64``  — base64-encoded MP3 bytes
             ``content_type`` — ``"audio/mpeg"``
-            ``viseme_events`` — list of ``{offset_ms, viseme_id}`` dicts
             ``duration_ms`` — playback duration
             ``language`` — resolved language tag
             ``voice_name`` — resolved voice name
@@ -184,7 +183,7 @@ class SpeechService:
         except ImportError:
             logger.warning(
                 "SpeechService.synthesize_sync: SDK unavailable — "
-                "falling back to REST API (no viseme events)."
+                "falling back to REST API."
             )
         except Exception as exc:
             logger.warning(
@@ -214,18 +213,10 @@ class SpeechService:
         )
         speech_config.speech_synthesis_voice_name = resolved_voice
 
-        viseme_events: List[Dict[str, Any]] = []
-
         # audio_config=None → capture to result.audio_data (no speaker output).
         synthesizer = speechsdk.SpeechSynthesizer(
             speech_config=speech_config,
             audio_config=None,
-        )
-        # 100-nanosecond ticks → milliseconds
-        synthesizer.viseme_received.connect(
-            lambda evt: viseme_events.append(
-                {"offset_ms": round(evt.audio_offset / 10_000, 2), "viseme_id": evt.viseme_id}
-            )
         )
 
         ssml = (
@@ -239,15 +230,13 @@ class SpeechService:
 
         if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
             logger.info(
-                "SpeechService._synthesize_sdk: %d bytes, %d visemes, %.0f ms",
+                "SpeechService._synthesize_sdk: %d bytes, %.0f ms",
                 len(result.audio_data),
-                len(viseme_events),
                 result.audio_duration.total_seconds() * 1000,
             )
             return {
                 "audio_b64": base64.b64encode(result.audio_data).decode("ascii"),
                 "content_type": "audio/mpeg",
-                "viseme_events": viseme_events,
                 "duration_ms": round(result.audio_duration.total_seconds() * 1000, 2),
                 "language": language,
                 "voice_name": resolved_voice,
@@ -265,7 +254,7 @@ class SpeechService:
         language: str,
         resolved_voice: str,
     ) -> Dict[str, Any]:
-        """Fallback TTS path via the Azure TTS REST API (no viseme events)."""
+        """Fallback TTS path via the Azure TTS REST API."""
         logger.info(
             "SpeechService._synthesize_rest: synthesising %d chars — %s / %s",
             len(text),
@@ -295,7 +284,6 @@ class SpeechService:
         return {
             "audio_b64": base64.b64encode(audio_bytes).decode("ascii"),
             "content_type": "audio/mpeg",
-            "viseme_events": [],
             "duration_ms": 0.0,
             "language": language,
             "voice_name": resolved_voice,

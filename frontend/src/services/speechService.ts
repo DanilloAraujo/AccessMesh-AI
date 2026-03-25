@@ -23,29 +23,25 @@ export interface VoiceResponse {
     text: string;
     source: string;
     features_applied: string[];
-    sign_gloss?: Array<Record<string, unknown>>;
-    translated_content?: string;
 }
 
 /**
  * Upload a raw audio blob (WebM/Opus from MediaRecorder) to the backend.
  * The backend transcribes it via the MCP speech_to_text_tool and runs the
- * full pipeline (RouterAgent → AccessibilityAgent → TranslationAgent →
- * AvatarAgent), broadcasting the result to all session participants.
+ * full pipeline (RouterAgent → AccessibilityAgent → ACCESSIBLE),
+ * broadcasting the result to all session participants.
  */
 export async function recognizeAudio(
     audioBlob: Blob,
     sessionId: string,
     userId: string,
     language = 'en-US',
-    targetLanguage = 'en-US',
 ): Promise<VoiceResponse> {
     const form = new FormData();
     form.append('audio', audioBlob, 'recording.webm');
     form.append('session_id', sessionId);
     form.append('user_id', userId);
     form.append('language', language);
-    form.append('target_language', targetLanguage);
 
     const response = await fetch(`${BASE_URL}/speech/recognize`, {
         method: 'POST',
@@ -54,35 +50,6 @@ export async function recognizeAudio(
     });
     if (!response.ok) {
         throw new Error(`[speechService] recognize failed: HTTP ${response.status}`);
-    }
-    return response.json();
-}
-
-/**
- * Sends already-transcribed text through the backend speech pipeline.
- * Kept for cases where native browser SpeechRecognition is used and the
- * text is already available client-side.
- */
-export async function processVoice(
-    text: string,
-    sessionId: string,
-    userId: string,
-    language = 'en-US',
-    targetLanguage = 'en-US',
-): Promise<VoiceResponse> {
-    const response = await fetch(`${BASE_URL}/speech/voice`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ..._getAuthHeaders() },
-        body: JSON.stringify({
-            text,
-            session_id: sessionId,
-            user_id: userId,
-            language,
-            target_language: targetLanguage,
-        }),
-    });
-    if (!response.ok) {
-        throw new Error(`[speechService] Pipeline error: HTTP ${response.status}`);
     }
     return response.json();
 }

@@ -12,9 +12,10 @@ mcp/
 ├ tools/             — Individual tool implementations
 │   speech_to_text_tool.py
 │   gesture_recognition_tool.py
-│   text_to_sign_tool.py
 │   text_to_speech_tool.py
+│   text_translation_tool.py
 │   meeting_summary_tool.py
+│   llm_classify_tool.py
 └ schemas/
     tool_schema.py   — Pydantic schemas: ToolDefinition, ToolInputSchema, ToolResult
 """
@@ -23,10 +24,11 @@ from mcp.tool_executor import executor
 from mcp.tool_registry import registry
 from mcp.tools import (
     GestureRecognitionTool,
+    LLMClassifyTool,
     MeetingSummaryTool,
     SpeechToTextTool,
-    TextToSignTool,
     TextToSpeechTool,
+    SignToTextTool,
 )
 
 __all__ = [
@@ -34,7 +36,8 @@ __all__ = [
     "executor",
     "SpeechToTextTool",
     "GestureRecognitionTool",
-    "TextToSignTool",
     "TextToSpeechTool",
+    "SignToTextTool",
     "MeetingSummaryTool",
+    "LLMClassifyTool",
 ]

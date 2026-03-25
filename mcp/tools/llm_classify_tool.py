@@ -22,18 +22,16 @@ from services.openai_service import OpenAIService
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_AGENTS: List[str] = ["accessibility_agent", "translation_agent", "avatar_agent"]
+_DEFAULT_AGENTS: List[str] = ["accessibility_agent"]
 
 _SYSTEM_PROMPT = (
     "You are a routing assistant for an accessible meeting platform for deaf and "
-    "hearing-impaired users. Sign-language delivery is ALWAYS required for any "
-    "natural-language input — even a single word counts as natural language. "
-    "Always activate all three agents for any non-empty utterance: "
-    "['accessibility_agent', 'translation_agent', 'avatar_agent']. "
-    "You may return ['accessibility_agent'] ONLY for pure system commands such as "
+    "hearing-impaired users. The pipeline has one processing agent: accessibility_agent. "
+    "For any natural-language input activate: ['accessibility_agent']. "
+    "You may return an empty list ONLY for pure system commands such as "
     "digits-only ('123'), punctuation-only, or explicit commands like '/mute'. "
     "Return ONLY a JSON array of agent names, e.g. "
-    '["accessibility_agent", "translation_agent", "avatar_agent"]'
+    '["accessibility_agent"]'
 )
 
 

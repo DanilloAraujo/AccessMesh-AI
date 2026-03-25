@@ -74,7 +74,7 @@ class BaseAgent(ABC):
 
         Contract:
           * Always propagate ``metadata["correlation_id"]`` to published
-            events — the fan-in (AvatarAgent) and collect callers rely on it.
+            events — the fan-in (AccessibilityAgent) and collect callers rely on it.
           * Never raise — catch all exceptions internally and log them.
             The bus's _safe_call already provides a last-resort guard.
           * Do NOT call other agents directly — only publish to bus.

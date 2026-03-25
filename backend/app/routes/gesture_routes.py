@@ -1,4 +1,4 @@
-"""Gesture / sign-language input endpoints exposed at /gesture/*."""
+﻿"""Gesture / sign-language input endpoints exposed at /gesture/*."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from agents import agent_bus
 from backend.app.session_store import append_message
 from fastapi import Request as _Request
 from shared.message_schema import (
-    AvatarReadyMessage,
+    AccessibleMessage,
     GestureMessage,
     MessageType,
 )
@@ -53,12 +53,12 @@ async def _dispatch_gesture(
     user_id: str,
     language: str,
     landmarks: Optional[List[Dict[str, float]]] = None,
-) -> Optional[AvatarReadyMessage]:
+) -> Optional[AccessibleMessage]:
     """
     Publish a GestureMessage onto the Agent Mesh bus and collect the resulting
-    AvatarReadyMessage.  Returns None on timeout.
+    AccessibleMessage.  Returns None on timeout.
     """
-    meta: Dict[str, Any] = {"language": language, "target_language": language}
+    meta: Dict[str, Any] = {"language": language}
     if landmarks:
         meta["landmarks"] = landmarks
 
@@ -73,23 +73,13 @@ async def _dispatch_gesture(
     )
     result = await agent_bus.publish_and_collect(
         gesture_msg,
-        collect_type=MessageType.AVATAR_READY,
+        collect_type=MessageType.ACCESSIBLE,
         timeout=30.0,
     )
-    return cast(Optional[AvatarReadyMessage], result)
+    return cast(Optional[AccessibleMessage], result)
 
 
-def _extract_gloss(avatar_ready: AvatarReadyMessage) -> List[Dict[str, Any]]:
-    if not avatar_ready.animation_data:
-        return []
-    return avatar_ready.animation_data.get("gloss_sequence", [])
-
-
-
-class GlossItem(BaseModel):
-    gloss: str
-    duration_ms: int = 600
-
+# ── Pydantic models ───────────────────────────────────────────────────────────
 
 class GestureProcessRequest(BaseModel):
     gesture_label: str = Field(
@@ -97,9 +87,9 @@ class GestureProcessRequest(BaseModel):
         max_length=200,
         description="Pre-classified gesture / sign label from the frontend.",
     )
-    session_id: str    = Field(..., max_length=128, description="Session / room identifier.")
-    user_id: str       = Field(..., max_length=128, description="Participant user_id.")
-    language: str      = Field(default="en-US", max_length=10, description="BCP-47 language tag.")
+    session_id: str = Field(..., max_length=128, description="Session / room identifier.")
+    user_id: str    = Field(..., max_length=128, description="Participant user_id.")
+    language: str   = Field(default="en-US", max_length=10, description="BCP-47 language tag.")
 
 
 class GestureProcessResponse(BaseModel):
@@ -107,7 +97,6 @@ class GestureProcessResponse(BaseModel):
     text: str
     source: str
     features_applied: List[str]
-    gloss_sequence: List[GlossItem]
 
 
 class LandmarksRequest(BaseModel):
@@ -120,6 +109,23 @@ class LandmarksRequest(BaseModel):
     language: str   = Field(default="en-US", max_length=10)
 
 
+class GestureFrameRequest(BaseModel):
+    frame_b64: str  = Field(..., description="Base64-encoded JPEG frame from the camera.")
+    session_id: str = Field(..., max_length=128, description="Session / room identifier.")
+    user_id: str    = Field(..., max_length=128, description="Participant user_id.")
+    language: str   = Field(default="en-US", max_length=10, description="BCP-47 language tag.")
+
+
+class GestureFrameResponse(BaseModel):
+    message_id: str
+    text: str
+    gesture_label: str
+    confidence: float
+    source: str
+    features_applied: List[str]
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post(
     "/process",
@@ -134,9 +140,8 @@ async def process_gesture(
 ) -> GestureProcessResponse:
     """
     Publishes a GestureMessage onto the Agent Mesh bus.  The GestureAgent
-    recognises the label → text, re-publishes as a TranscriptionMessage that
-    flows through the full pipeline (Router → Accessibility + Translation →
-    Avatar).  Collects the resulting AvatarReadyMessage and returns it.
+    recognises the label to text, re-publishes as a TranscriptionMessage that
+    flows through the full pipeline (Router → Accessibility → ACCESSIBLE).
     """
     if not body.gesture_label.strip():
         raise HTTPException(status_code=422, detail="gesture_label cannot be empty.")
@@ -156,24 +161,22 @@ async def process_gesture(
                 text=body.gesture_label,
                 source="gesture",
                 features_applied=[],
-                gloss_sequence=[],
             )
-        gloss_raw = _extract_gloss(terminal)
-        translated_text = terminal.metadata.get("original_text", "") if terminal.metadata else ""
-        # Persist to Cosmos (primary) or in-memory store (fallback).
-        # Fall back to the raw gesture label so the message is always stored.
+        content = terminal.text or body.gesture_label
         await _save_message(request, body.session_id, {
             "id": terminal.message_id,
-            "content": translated_text or body.gesture_label,
+            "content": content,
             "source": "gesture",
             "from": body.user_id,
         })
         return GestureProcessResponse(
             message_id=terminal.message_id,
-            text=translated_text,
+            text=content,
             source="gesture",
-            features_applied=terminal.metadata.get("features_applied", []) if terminal.metadata else [],
-            gloss_sequence=[GlossItem(gloss=g["gloss"], duration_ms=g.get("duration_ms", 600)) for g in gloss_raw],
+            features_applied=[
+                f.value if hasattr(f, "value") else f
+                for f in terminal.features_applied
+            ],
         )
     except Exception as exc:
         logger.exception("Error processing gesture input")
@@ -218,7 +221,6 @@ async def process_landmarks(
             text=text or "",
             source="gesture",
             features_applied=[],
-            gloss_sequence=[],
         )
 
     try:
@@ -241,10 +243,8 @@ async def process_landmarks(
             text=text,
             source="gesture",
             features_applied=[],
-            gloss_sequence=[],
         )
-    gloss_raw = _extract_gloss(terminal)
-    recognized_text = (terminal.metadata.get("original_text", "") if terminal.metadata else "") or text
+    recognized_text = terminal.text or text
     await _save_message(request, body.session_id, {
         "id": terminal.message_id,
         "content": recognized_text,
@@ -255,30 +255,11 @@ async def process_landmarks(
         message_id=terminal.message_id,
         text=recognized_text,
         source="gesture",
-        features_applied=terminal.metadata.get("features_applied", []) if terminal.metadata else [],
-        gloss_sequence=[
-            GlossItem(gloss=g["gloss"], duration_ms=g.get("duration_ms", 600))
-            for g in gloss_raw
+        features_applied=[
+            f.value if hasattr(f, "value") else f
+            for f in terminal.features_applied
         ],
     )
-
-
-
-class GestureFrameRequest(BaseModel):
-    frame_b64: str  = Field(..., description="Base64-encoded JPEG frame from the camera.")
-    session_id: str = Field(..., max_length=128, description="Session / room identifier.")
-    user_id: str    = Field(..., max_length=128, description="Participant user_id.")
-    language: str   = Field(default="en-US", max_length=10, description="BCP-47 language tag.")
-
-
-class GestureFrameResponse(BaseModel):
-    message_id: str
-    text: str
-    gesture_label: str
-    confidence: float
-    source: str
-    features_applied: List[str]
-    gloss_sequence: List[GlossItem]
 
 
 @router.post(
@@ -311,7 +292,6 @@ async def process_frame(
     confidence = float(recognition.get("confidence", 0.0))
     text       = recognition.get("text", "")
 
-    # Below confidence threshold — return early without pipeline invocation
     if not text or label == "unknown" or confidence < 0.4:
         return GestureFrameResponse(
             message_id="",
@@ -320,7 +300,6 @@ async def process_frame(
             confidence=confidence,
             source="gesture",
             features_applied=[],
-            gloss_sequence=[],
         )
 
     try:
@@ -344,10 +323,8 @@ async def process_frame(
             confidence=confidence,
             source="gesture",
             features_applied=[],
-            gloss_sequence=[],
         )
-    gloss_raw = _extract_gloss(terminal)
-    recognized_text = (terminal.metadata.get("original_text", "") if terminal.metadata else "") or text
+    recognized_text = terminal.text or text
     await _save_message(request, body.session_id, {
         "id": terminal.message_id,
         "content": recognized_text,
@@ -360,6 +337,8 @@ async def process_frame(
         gesture_label=label,
         confidence=confidence,
         source="gesture",
-        features_applied=terminal.metadata.get("features_applied", []) if terminal.metadata else [],
-        gloss_sequence=[GlossItem(gloss=g["gloss"], duration_ms=g.get("duration_ms", 600)) for g in gloss_raw],
+        features_applied=[
+            f.value if hasattr(f, "value") else f
+            for f in terminal.features_applied
+        ],
     )

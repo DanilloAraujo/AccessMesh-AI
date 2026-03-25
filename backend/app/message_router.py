@@ -31,6 +31,14 @@ class MessageRouter:
     async def _screen(self, text: str) -> None:
         """Raise ValueError if content safety blocks the text."""
         if self._content_safety is None:
+            logger.debug("[ContentSafety] Service not configured — screening skipped.")
+            return
+        if not getattr(self._content_safety, "is_enabled", False):
+            logger.warning(
+                "[ContentSafety] Service is disabled (missing credentials) — "
+                "messages are NOT being screened. Set CONTENT_SAFETY_ENDPOINT "
+                "and CONTENT_SAFETY_KEY in production."
+            )
             return
         try:
             result = await asyncio.to_thread(self._content_safety.analyze_text, text)
@@ -54,7 +62,6 @@ class MessageRouter:
         session_id: str,
         user_id: str,
         language: str = "en-US",
-        target_language: str = "en-US",
         display_name: str = "",
     ) -> Dict[str, Any]:
         """
@@ -63,8 +70,8 @@ class MessageRouter:
         Returns the enriched payload dict.
         """
         logger.info(
-            "MessageRouter.route_voice — session=%s user=%s lang=%s target=%s text=%s",
-            session_id, user_id, language, target_language, text[:80],
+            "MessageRouter.route_voice — session=%s user=%s lang=%s text=%s",
+            session_id, user_id, language, text[:80],
         )
         await self._screen(text)
         accessible = await self._pipeline.run(
@@ -72,17 +79,20 @@ class MessageRouter:
             session_id=session_id,
             user_id=user_id,
             language=language,
-            target_language=target_language,
         )
         payload = self._build_payload(accessible, source="voice")
         if display_name:
             payload["from"] = display_name
         logger.info(
-            "MessageRouter.route_voice done — id=%s features=%s audio=%s gloss=%d",
-            payload.get('id'), payload.get('features_applied'), 'yes' if payload.get('audio_b64') else 'no',
-            len(payload.get('sign_gloss') or []),
+            "MessageRouter.route_voice done — id=%s features=%s",
+            payload.get('id'), payload.get('features_applied'),
         )
-        await asyncio.to_thread(self._dispatcher.dispatch, session_id, payload, exclude_sender=user_id)
+        # Fire-and-forget: broadcast to other participants without blocking the HTTP response.
+        # The sender already receives the enriched payload via the return value.
+        asyncio.create_task(
+            asyncio.to_thread(self._dispatcher.dispatch, session_id, payload, exclude_sender=user_id),
+            name=f"dispatch:voice:{session_id}",
+        )
         return payload
 
     async def route_gesture(
@@ -91,7 +101,6 @@ class MessageRouter:
         session_id: str,
         user_id: str,
         language: str = "en-US",
-        target_language: str = "en-US",
         display_name: str = "",
     ) -> Dict[str, Any]:
         """
@@ -120,12 +129,14 @@ class MessageRouter:
             session_id=session_id,
             user_id=user_id,
             language=language,
-            target_language=target_language,
         )
         payload = self._build_payload(accessible, source="gesture")
         if display_name:
             payload["from"] = display_name
-        await asyncio.to_thread(self._dispatcher.dispatch, session_id, payload, exclude_sender=user_id)
+        asyncio.create_task(
+            asyncio.to_thread(self._dispatcher.dispatch, session_id, payload, exclude_sender=user_id),
+            name=f"dispatch:gesture:{session_id}",
+        )
         return payload
 
     async def route_chat(
@@ -135,7 +146,6 @@ class MessageRouter:
         user_id: str,
         display_name: str = "",
         language: str = "en-US",
-        target_language: str = "en-US",
     ) -> Dict[str, Any]:
         """
         Route a chat message through the AgentMeshPipeline for full accessibility enrichment.
@@ -147,12 +157,14 @@ class MessageRouter:
             session_id=session_id,
             user_id=user_id,
             language=language,
-            target_language=target_language,
         )
         payload = self._build_payload(accessible, source="text")
         if display_name:
             payload["from"] = display_name
-        await asyncio.to_thread(self._dispatcher.dispatch, session_id, payload, exclude_sender=user_id)
+        asyncio.create_task(
+            asyncio.to_thread(self._dispatcher.dispatch, session_id, payload, exclude_sender=user_id),
+            name=f"dispatch:chat:{session_id}",
+        )
         return payload
 
 
@@ -160,24 +172,12 @@ class MessageRouter:
     def _build_payload(accessible: Any, source: str) -> Dict[str, Any]:
         """Convert an AccessibleMessage (agent output) to a broadcast dict."""
         metadata: Dict[str, Any] = getattr(accessible, "metadata", None) or {}
-        gloss_seq = metadata.get("gloss_sequence", [])
-        translated_text = metadata.get("translated_text")
-        audio_b64       = metadata.get("audio_b64")   # TTS output from AccessibilityAgent (RB02)
-        confidence    = metadata.get("confidence")
-        viseme_events = metadata.get("viseme_events")
         return {
             "id":                 accessible.message_id,
             "type":               "message",
             "source":             source,
             "from":               accessible.sender_id,
             "content":            accessible.text,
-            "sign_gloss":         [{"gloss": g, "duration_ms": 600} for g in gloss_seq] if gloss_seq else None,
-            "translated_content": translated_text,
-            "audio_b64":          audio_b64,
-            "avatar_url":         getattr(accessible, "avatar_url", None),
-            # Confidence and viseme events propagated from speech pipeline
-            "confidence":         getattr(accessible, "confidence", confidence),
-            "viseme_events":      viseme_events,
             "features_applied":   [
                 f.value if hasattr(f, "value") else str(f)
                 for f in (getattr(accessible, "features_applied", None) or [])

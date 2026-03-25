@@ -9,8 +9,8 @@ import MicrophoneInput from './MicrophoneInput';
 const ChatPanel: React.FC = () => {
   const { t } = useTranslation();
   const {
-    messages, userId, displayName, communicationMode, sendChatMessage, connectionStatus: status,
-    addMessage, replaceMessage, updateGloss, targetLanguage, micEnabled,
+    messages, userId, displayName, sendChatMessage, connectionStatus: status,
+    addMessage, replaceMessage, targetLanguage, micEnabled,
   } = useMeeting();
   const [inputText, setInputText] = useState<string>('');
   const [isSending, setIsSending] = useState(false);
@@ -21,15 +21,6 @@ const ChatPanel: React.FC = () => {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
-
-  useEffect(() => {
-    const last = messages.at(-1);
-    const isMine = last?.from === displayName || last?.from === userId;
-    if (last && !isMine && last.audio_b64 && communicationMode === 'voice') {
-      const audio = new Audio(`data:audio/mpeg;base64,${last.audio_b64}`);
-      audio.play().catch(() => { });
-    }
-  }, [messages, userId, displayName, communicationMode]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,7 +37,6 @@ const ChatPanel: React.FC = () => {
       const sentMsg = await sendChatMessage(text, targetLanguage);
       if (sentMsg) {
         replaceMessage(tempId, sentMsg);
-        if (sentMsg.sign_gloss?.length) updateGloss(sentMsg.sign_gloss);
       }
     } finally {
       setIsSending(false);
@@ -102,22 +92,6 @@ const ChatPanel: React.FC = () => {
                   }`}
               >
                 {msg.content}
-                {/* Audio player only for voice-mode users — others receive text/gloss */}
-                {msg.audio_b64 && communicationMode === 'voice' && (
-                  <div className="mt-1 pt-1 border-t border-white/10">
-                    <span id={`audio-transcript-${msg.id}`} className="sr-only">
-                      Audio version: {msg.content}
-                    </span>
-                    <audio
-                      controls
-                      src={`data:audio/mpeg;base64,${msg.audio_b64}`}
-                      className="w-full"
-                      style={{ height: '40px', minWidth: '200px' }}
-                      aria-label="Audio version of this message"
-                      aria-describedby={`audio-transcript-${msg.id}`}
-                    />
-                  </div>
-                )}
               </div>
             </motion.div>
           ))}

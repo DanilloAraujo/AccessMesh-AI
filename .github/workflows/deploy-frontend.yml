@@ -1,0 +1,49 @@
+name: "Deploy Frontend — Azure Static Web Apps"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+  workflow_dispatch:
+
+# OIDC token required for azure/login federated identity
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Build and Deploy Static Web App
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # ── 2. Azure login (OIDC / federated identity) ───────────────────
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ── 3. Build and Deploy ───────────────────────────────────────────
+      # The SWA deploy action runs `npm ci && npm run build` automatically
+      # inside `app_location`. Build-time env vars are injected via `env:`.
+      - name: Build and Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: frontend      # directory with package.json
+          output_location: dist       # Vite build output
+          skip_api_build: true        # no Azure Functions API in this repo
+        env:
+          # Runtime backend URL injected at Vite build time
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}

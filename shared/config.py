@@ -20,7 +20,6 @@ _FIELD_TO_KV_SECRET: Dict[str, str] = {
     "azure_speech_key":              "azure-speech-key",
     "gesture_api_key":               "gesture-api-key",
     "openai_key":                    "azure-openai-key",
-    "avatar_api_key":                "avatar-api-key",
     "cosmos_key":                    "cosmos-key",
     "content_safety_key":            "content-safety-key",
     "translator_key":                "translator-key",
@@ -152,11 +151,6 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("azure_openai_api_version", "openai_api_version"),
     )
 
-    # Avatar
-    avatar_api_key: str = ""
-    avatar_api_endpoint: str = ""
-    avatar_provider: str = "stub"
-
     # Azure Cosmos DB
     cosmos_endpoint: str = ""
     cosmos_key: str = ""
@@ -187,7 +181,9 @@ class Settings(BaseSettings):
     jwt_refresh_expire_minutes: int = 10080  # 7 days
 
     # Pipeline & Agent Bus
-    pipeline_timeout_seconds: float = 30.0
+    # Reduced timeout: pipeline now only does text + translation (no TTS, no sign gloss).
+    # 5 s is sufficient for translator API round-trip under normal load.
+    pipeline_timeout_seconds: float = 5.0
 
     # MCP
     mcp_http_timeout_seconds: float = 30.0

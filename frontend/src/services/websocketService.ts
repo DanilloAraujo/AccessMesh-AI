@@ -14,22 +14,14 @@ export interface ChatMessage {
   from: string;
   content: string;
   timestamp: string;
-  /** 'voice' when the message was produced by the speech pipeline, 'gesture' for gesture input */
+  /** 'voice' when produced by speech pipeline, 'gesture' for gesture input, 'text' for chat */
   source?: 'text' | 'voice' | 'gesture';
   /** Accessibility features applied by the accessibility_agent */
   features_applied?: string[];
-  /** Sign-language gloss sequence (from text_to_sign_tool via pipeline) */
-  sign_gloss?: Array<{ gloss: string; duration_ms: number }>;
-  /** Translated text when target language differs from source */
-  translated_content?: string;
-  /** Base64-encoded MP3 from text_to_speech_tool — TTS playback for other participants (RB01) */
-  audio_b64?: string;
   /** True while the pipeline is still processing — renders as a typing indicator */
   pending?: boolean;
-  /** STT transcription confidence score (0–1) — displayed next to voice messages */
+  /** STT transcription confidence score (0–1) */
   confidence?: number;
-  /** Azure Neural TTS viseme timing events for avatar lip-sync */
-  viseme_events?: Array<{ offset_ms: number; viseme_id: number }>;
 }
 
 export interface PubSubMessage {
@@ -85,7 +77,8 @@ class WebSocketService {
         headers: this._getAuthHeaders(),
         body: JSON.stringify({
           user_id: this.userId,
-          session_id: this.sessionId
+          session_id: this.sessionId,
+          display_name: this.displayName || this.userId,
         })
       });
 
@@ -185,9 +178,7 @@ class WebSocketService {
         timestamp: m.stored_at ?? m.timestamp ?? new Date().toISOString(),
         source: (m.source as ChatMessage['source']) ?? 'text',
         features_applied: m.features_applied,
-        sign_gloss: m.sign_gloss,
-        translated_content: m.translated_content,
-        audio_b64: m.audio_b64,
+        confidence: m.confidence,
       }));
       for (const msg of msgs) {
         this.messageListeners.forEach(cb => cb({ type: 'message', data: msg }));
@@ -195,31 +186,6 @@ class WebSocketService {
     } catch (e) {
       console.warn('[WebSocket] Failed to load history:', e);
     }
-  }
-
-  /**
-   * Sends a message to the group (raw WebSocket — for internal use only).
-   * External callers should use sendChatMessage() so text goes through the pipeline.
-   */
-  sendMessage(text: string): ChatMessage | null {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      const message: ChatMessage = {
-        id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        type: 'message',
-        from: this.displayName || this.userId,
-        content: text,
-        timestamp: new Date().toISOString()
-      };
-
-      this.socket.send(JSON.stringify({
-        type: 'sendToGroup',
-        group: this.sessionId,
-        data: message
-      }));
-
-      return message;
-    }
-    return null;
   }
 
   /**
@@ -236,16 +202,24 @@ class WebSocketService {
         dataType: 'json',
         data: msg,
       }));
+      console.debug('[WebSocket] _broadcastToGroup sent id=%s source=%s group=%s', msg.id, msg.source, this.sessionId);
+    } else {
+      console.warn(
+        '[WebSocket] _broadcastToGroup: socket not ready (state=%s) — message dropped id=%s source=%s',
+        this.socket?.readyState ?? 'null',
+        msg.id,
+        msg.source,
+      );
     }
   }
 
   /**
    * Posts plain-text chat to the backend chat pipeline.
-   * The pipeline runs router → accessibility → translation → avatar and
-   * broadcasts the enriched result (with sign_gloss) to all participants.
+   * The pipeline runs router → accessibility and broadcasts the enriched
+   * result (with sign_gloss) to all participants.
    */
   async sendChatMessage(text: string, targetLanguage = 'en-US'): Promise<ChatMessage | null> {
-    console.log('[websocketService] sendChatMessage → POST /chat/send — text=%s target=%s', text.substring(0, 80), targetLanguage);
+    console.log('[websocketService] sendChatMessage → POST /chat/send — text=%s', text.substring(0, 80));
     try {
       const response = await fetch(`${BASE_URL}/chat/send`, {
         method: 'POST',
@@ -256,7 +230,6 @@ class WebSocketService {
           user_id: this.userId,
           display_name: this.displayName,
           language: targetLanguage,
-          target_language: targetLanguage,
         }),
       });
 
@@ -275,14 +248,9 @@ class WebSocketService {
         timestamp: new Date().toISOString(),
         source: 'text',
         features_applied: result.features_applied ?? [],
-        sign_gloss: result.sign_gloss ?? undefined,
-        translated_content: result.translated_content ?? undefined,
-        audio_b64: result.audio_b64 ?? undefined,
         confidence: result.confidence ?? undefined,
-        viseme_events: result.viseme_events ?? undefined,
       };
       // Broadcast the enriched message to all other group members via WebSocket.
-      // This is more reliable than the server-side REST send_to_group.
       this._broadcastToGroup(enriched);
       return enriched;
     } catch (err) {
@@ -293,14 +261,14 @@ class WebSocketService {
 
   /**
    * Posts transcribed text to the backend speech pipeline.
-   * The pipeline runs router → accessibility → translation → avatar
-   * and broadcasts the result to ALL session participants via Web PubSub.
+   * The pipeline runs router → accessibility and broadcasts the result
+   * to ALL session participants via Web PubSub.
    *
    * Returns a local ChatMessage for optimistic UI update (the sender
    * is excluded from the WebPubSub broadcast echo).
    */
   async processSpeech(text: string, language = 'en-US', targetLanguage = 'en-US'): Promise<ChatMessage | null> {
-    console.log('[websocketService] processSpeech → POST /speech/voice — text=%s lang=%s target=%s', text.substring(0, 80), language, targetLanguage);
+    console.log('[websocketService] processSpeech → POST /speech/voice — text=%s lang=%s', text.substring(0, 80), language);
     try {
       const response = await fetch(`${BASE_URL}/speech/voice`, {
         method: 'POST',
@@ -321,22 +289,20 @@ class WebSocketService {
       }
 
       const result = await response.json();
-      console.log('[websocketService] processSpeech response — id=%s features=%o audio=%s', result.message_id, result.features_applied, result.audio_b64 ? 'yes' : 'no');
+      console.log('[websocketService] processSpeech response — id=%s features=%o', result.message_id, result.features_applied);
 
       // Build a local ChatMessage so the sender sees it immediately.
       const localMsg: ChatMessage = {
-        id: result.message_id,
+        // Fallback id prevents the recipient filter (d?.id) from silently dropping
+        // the message in the rare case the backend returns an empty string.
+        id: result.message_id || `voice_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         type: 'message',
         from: this.displayName || this.userId,
-        content: result.text,
+        content: result.text ?? text,
         timestamp: new Date().toISOString(),
         source: 'voice',
         features_applied: result.features_applied ?? [],
-        sign_gloss: result.sign_gloss ?? undefined,
-        translated_content: result.translated_content ?? undefined,
-        audio_b64: result.audio_b64 ?? undefined,
         confidence: result.confidence ?? undefined,
-        viseme_events: result.viseme_events ?? undefined,
       };
       // Broadcast the enriched voice message to all other group members.
       this._broadcastToGroup(localMsg);
@@ -371,7 +337,6 @@ class WebSocketService {
           user_id: this.userId,
           display_name: this.displayName,
           language,
-          target_language: targetLanguage,
         }),
       });
       if (!response.ok) {
@@ -379,7 +344,7 @@ class WebSocketService {
         return null;
       }
       const result = await response.json();
-      console.log('[websocketService] sendHubMessage response — id=%s features=%o audio=%s', result.message_id, result.features_applied, result.audio_b64 ? 'yes' : 'no');
+      console.log('[websocketService] sendHubMessage response — id=%s features=%o', result.message_id, result.features_applied);
       const sourceMap: Record<string, ChatMessage['source']> = {
         speech: 'voice',
         gesture: 'gesture',
@@ -393,11 +358,7 @@ class WebSocketService {
         timestamp: new Date().toISOString(),
         source: sourceMap[inputType] ?? 'text',
         features_applied: result.features_applied ?? [],
-        sign_gloss: result.sign_gloss ?? undefined,
-        translated_content: result.translated_content ?? undefined,
-        audio_b64: result.audio_b64 ?? undefined,
         confidence: result.confidence ?? undefined,
-        viseme_events: result.viseme_events ?? undefined,
       };
       this._broadcastToGroup(localMsg);
       return localMsg;
@@ -451,3 +412,4 @@ class WebSocketService {
 }
 
 export { WebSocketService };
+

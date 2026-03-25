@@ -30,6 +30,19 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // JS/CSS chunks get content hashes — cache forever in CDN/browser.
+        // index.html is served with no-cache headers (set in index.html meta
+        // tags and via the server/CDN configuration) so stale HTML never
+        // references old hashed assets.
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
+      },
+    },
+  },
   server: {
     port: 5173,
     sourcemapIgnoreList: (sourcePath) => sourcePath.includes('node_modules/@mediapipe'),
@@ -38,6 +51,12 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+    },
+    headers: {
+      // Prevent Vite dev server from caching index.html between hot-reloads.
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
     },
   },
 });
