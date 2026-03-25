@@ -60,4 +60,5 @@ jobs:
           az containerapp update \
             --name            "${{ secrets.MCP_CONTAINER_APP_NAME }}" \
             --resource-group  "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --subscription    "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
             --image           "${{ env.IMAGE_TAG }}"
