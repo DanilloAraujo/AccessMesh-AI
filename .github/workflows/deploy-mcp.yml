@@ -32,8 +32,18 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # ── 3. Authenticate Docker to ACR ────────────────────────────────
+      # --expose-token is required in CI with OIDC — the Docker credential
+      # helper used by plain `az acr login` is not available in GitHub runners.
       - name: Log in to Azure Container Registry
-        run: az acr login --name "${{ secrets.ACR_NAME }}"
+        run: |
+          ACR_TOKEN=$(az acr login \
+            --name "${{ secrets.ACR_NAME }}" \
+            --expose-token \
+            --output tsv \
+            --query accessToken)
+          echo "$ACR_TOKEN" | docker login "${{ secrets.ACR_LOGIN_SERVER }}" \
+            --username 00000000-0000-0000-0000-000000000000 \
+            --password-stdin
 
       # ── 4. Build Docker image (context = repo root) ──────────────────
       - name: Build and push Docker image
