@@ -47,13 +47,24 @@ jobs:
 
       - name: Deploy MCP to Container Apps
         run: |
-          echo "=== Subscriptions available ==="
-          az account list --output table
-          echo "=== Container Apps in resource group ==="
+          az extension add --name containerapp --upgrade --yes
+
+          echo "=== Active account ==="
+          az account show --output table
+
+          echo "=== All resource groups ==="
+          az group list \
+            --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            --output table
+
+          echo "=== ALL Container Apps in subscription ==="
           az containerapp list \
-            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
-            --subscription   "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-            --output table || true
+            --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            --output table
+
+          echo "=== Secret AZURE_RESOURCE_GROUP value ==="
+          echo "Resource group: ${{ secrets.AZURE_RESOURCE_GROUP }}"
+
           echo "=== Deploying ==="
           az containerapp update \
             --name           "${{ secrets.MCP_CONTAINER_APP_NAME }}" \
@@ -99,6 +110,8 @@ jobs:
 
       - name: Deploy Backend to Container Apps
         run: |
+          az extension add --name containerapp --upgrade --yes
+
           echo "=== Container Apps in resource group ==="
           az containerapp list \
             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
