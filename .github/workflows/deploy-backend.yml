@@ -1,16 +1,8 @@
 name: "Deploy Backend — Azure Container Apps"
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "backend/**"
-      - "agents/**"
-      - "services/**"
-      - "shared/**"
-      - "mcp/**"
-      - "requirements.txt"
-      - "backend/Dockerfile"
+  # Use deploy-all.yml para push automático com ordem garantida.
+  # Este workflow existe para redeploy manual isolado do Backend.
   workflow_dispatch:
 
 # OIDC token required for azure/login federated identity

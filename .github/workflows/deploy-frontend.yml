@@ -1,10 +1,8 @@
 name: "Deploy Frontend — Azure Static Web Apps"
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "frontend/**"
+  # Use deploy-all.yml para push automático com ordem garantida.
+  # Este workflow existe para redeploy manual isolado do Frontend.
   workflow_dispatch:
 
 # OIDC token required for azure/login federated identity
